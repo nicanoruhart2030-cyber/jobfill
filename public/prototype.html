@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobFill · Prototype</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --bg-base:       #07070F;
+      --bg-surface:    #0D0D1A;
+      --bg-elevated:   #14142A;
+      --accent:        #1D9E75;
+      --accent-dim:    rgba(29,158,117,0.11);
+      --accent-hover:  #0F6E56;
+      --border:        rgba(255,255,255,0.065);
+      --border-hover:  rgba(255,255,255,0.13);
+      --border-accent: rgba(29,158,117,0.28);
+      --text-primary:  #F0F0F6;
+      --text-secondary:#8080A8;
+      --text-muted:    #40405A;
+      --text-accent:   #1D9E75;
+      --red:           #E24B4A;
+      --red-dim:       rgba(226,75,74,0.11);
+      --blue:          #378ADD;
+      --blue-dim:      rgba(55,138,221,0.11);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      /* Ambient gradient */
+      background-image:
+        radial-gradient(ellipse 60% 40% at 50% -10%, rgba(29,158,117,0.07) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 30% at 80% 80%, rgba(55,138,221,0.05) 0%, transparent 60%);
+    }
+    @keyframes page-enter {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toast-slide {
+      from { opacity: 0; transform: translateX(16px) scale(0.96); }
+      to   { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(29,158,117,0.35); }
+      70%  { box-shadow: 0 0 0 8px rgba(29,158,117,0); }
+      100% { box-shadow: 0 0 0 0 rgba(29,158,117,0); }
+    }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
+
+/* ─── Tokens (JS) ──────────────────────────────────────────────────────── */
+const T = {
+  base:'#07070F', surface:'#0D0D1A', elevated:'#14142A',
+  accent:'#1D9E75', accentDim:'rgba(29,158,117,0.11)', accentHov:'#0F6E56',
+  border:'rgba(255,255,255,0.065)', borderHov:'rgba(255,255,255,0.13)', borderAcc:'rgba(29,158,117,0.28)',
+  pri:'#F0F0F6', sec:'#8080A8', mut:'#40405A', acc:'#1D9E75',
+  red:'#E24B4A', redDim:'rgba(226,75,74,0.11)',
+  blue:'#378ADD', blueDim:'rgba(55,138,221,0.11)',
+};
+
+/* ─── Data ─────────────────────────────────────────────────────────────── */
+const JOBS = [
+  { id:'1', title:'Senior Frontend Engineer', company:'Stripe',    location:'Remote · US',        salary:'$175k – $215k', type:'Full-time', match:94, tags:['TypeScript','React','GraphQL','Perf'],      desc:"Join Stripe's Dashboard team building the interfaces that power global commerce. Own entire product surfaces, collaborate with world-class designers, and ship to millions of users daily." },
+  { id:'2', title:'Staff Software Engineer',  company:'Linear',    location:'Remote · Global',     salary:'$190k – $230k', type:'Full-time', match:91, tags:['TypeScript','React','Postgres','Rust'],     desc:"Linear is building the most loved project management tool. As a Staff Engineer you'll define technical direction, raise the bar on quality, and ship tools used by the world's best teams." },
+  { id:'3', title:'Product Engineer',         company:'Vercel',    location:'SF or Remote',        salary:'$160k – $200k', type:'Full-time', match:88, tags:['Next.js','Node.js','Edge','TypeScript'],    desc:"Build the infrastructure powering the modern web. Work alongside creators of Next.js to shape deployment, Edge functions, and developer experience at global scale." },
+  { id:'4', title:'Backend Engineer',         company:'Supabase',  location:'Remote · Global',     salary:'$145k – $185k', type:'Full-time', match:85, tags:['PostgreSQL','Rust','Go','TypeScript'],      desc:"Open-source Firebase alternative. Help build the database layer, real-time subscriptions, and edge functions. Async-first team across 20+ countries." },
+  { id:'5', title:'Full-Stack Engineer',      company:'Resend',    location:'Remote',              salary:'$140k – $170k', type:'Full-time', match:81, tags:['React','Node.js','TypeScript','AWS'],       desc:"Rebuilding email infrastructure for developers. Join a tiny, high-conviction team to build the API, dashboard, and SDK that makes sending email genuinely delightful." },
+];
+
+const LOGO_COLORS = ['#1D9E75','#378ADD','#8B5CF6','#F59E0B','#E24B4A','#EC4899','#14B8A6'];
+function logoBg(name) {
+  let h=0; for(let c of name) h=(h*31+c.charCodeAt(0))&0xffffff;
+  return LOGO_COLORS[Math.abs(h)%LOGO_COLORS.length];
+}
+
+/* ─── Toast ────────────────────────────────────────────────────────────── */
+function useToast() {
+  const [list, setList] = useState([]);
+  const add = useCallback((msg, type='info') => {
+    const id = Date.now();
+    setList(p => [...p.slice(-3), {id, msg, type}]);
+    setTimeout(() => setList(p => p.filter(t => t.id !== id)), 3200);
+  }, []);
+  return { list, toast: add };
+}
+
+const TOAST_ICONS = {
+  success: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#1D9E75" strokeWidth="1"/><path d="M4.5 7L6.5 9L9.5 5" stroke="#1D9E75" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  error:   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#E24B4A" strokeWidth="1"/><path d="M5 5l4 4M9 5l-4 4" stroke="#E24B4A" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  info:    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#8080A8" strokeWidth="1"/><path d="M7 6.5V9.5M7 4.5V5.2" stroke="#8080A8" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+};
+
+function Toasts({ list }) {
+  return (
+    <div style={{ position:'fixed', bottom:24, right:24, display:'flex', flexDirection:'column', gap:8, zIndex:999, pointerEvents:'none' }}>
+      {list.map(t => (
+        <div key={t.id} style={{
+          display:'flex', alignItems:'center', gap:10,
+          background:T.surface, border:`0.5px solid ${T.borderHov}`,
+          borderRadius:10, padding:'10px 14px',
+          fontFamily:'Inter', fontSize:13, color:T.pri,
+          animation:'toast-slide 0.2s ease',
+          boxShadow:'0 8px 32px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04)',
+          backdropFilter:'blur(12px)', maxWidth:300,
+        }}>
+          {TOAST_ICONS[t.type]}
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Stack geometry ───────────────────────────────────────────────────── */
+const STACK = [
+  { scale:1,    y:0,   z:3, opacity:1    },
+  { scale:0.96, y:12,  z:2, opacity:0.85 },
+  { scale:0.92, y:24,  z:1, opacity:0.65 },
+];
+
+/* ─── Job Card ──────────────────────────────────────────────────────────── */
+function JobCard({ job, offsetIndex, dragX, dragging, flung, flingDir }) {
+  const s    = STACK[offsetIndex] ?? STACK[2];
+  const rot  = dragging && offsetIndex===0 ? dragX*0.055 : 0;
+  const fx   = flung && offsetIndex===0 ? (flingDir==='right'?900:-900) : 0;
+  const fy   = flung && offsetIndex===0 ? 80 : 0;
+  const fop  = flung && offsetIndex===0 ? 0 : s.opacity;
+
+  let transition = 'none';
+  if (flung && offsetIndex===0) transition = 'transform 0.3s cubic-bezier(0.4,0,1,1), opacity 0.3s ease';
+  else if (!dragging) transition = 'transform 0.38s cubic-bezier(0.175,0.885,0.32,1.275), opacity 0.3s ease';
+
+  const applyOp = dragging && offsetIndex===0 ? Math.min(1,(dragX-20)/60) : 0;
+  const skipOp  = dragging && offsetIndex===0 ? Math.min(1,(-dragX-20)/60) : 0;
+  const clr = logoBg(job.company);
+
+  return (
+    <div style={{
+      position:'absolute', width:'100%',
+      transform:`translateX(${dragX+fx}px) translateY(${s.y+fy}px) scale(${s.scale}) rotate(${rot}deg)`,
+      opacity:fop, transition,
+      transformOrigin:'bottom center',
+      zIndex:s.z, willChange:'transform',
+      background:T.surface,
+      border:`0.5px solid ${T.border}`,
+      borderRadius:22,
+      padding:'22px 22px 20px',
+      cursor:offsetIndex===0?'grab':'default',
+      userSelect:'none',
+      boxShadow:`0 2px 24px rgba(0,0,0,0.35), inset 0 0 0 0.5px rgba(255,255,255,0.03)`,
+    }}>
+      {/* Apply label */}
+      {applyOp>0 && (
+        <div style={{ position:'absolute', top:20, left:20, opacity:applyOp, transform:'rotate(-10deg)', zIndex:20 }}>
+          <span style={{ fontFamily:'Syne', fontSize:15, fontWeight:700, color:T.accent, border:`2px solid ${T.accent}`, borderRadius:8, padding:'3px 12px', letterSpacing:'0.1em', display:'block' }}>APPLY</span>
+        </div>
+      )}
+      {/* Skip label */}
+      {skipOp>0 && (
+        <div style={{ position:'absolute', top:20, right:20, opacity:skipOp, transform:'rotate(10deg)', zIndex:20 }}>
+          <span style={{ fontFamily:'Syne', fontSize:15, fontWeight:700, color:T.red, border:`2px solid ${T.red}`, borderRadius:8, padding:'3px 12px', letterSpacing:'0.1em', display:'block' }}>SKIP</span>
+        </div>
+      )}
+
+      {/* Card header */}
+      <div style={{ display:'flex', gap:14, alignItems:'flex-start', marginBottom:16 }}>
+        <div style={{ width:48, height:48, borderRadius:14, background:clr+'1E', border:`0.5px solid ${clr}44`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <span style={{ fontFamily:'Syne', fontSize:17, fontWeight:700, color:clr }}>{job.company[0]}</span>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+            <p style={{ fontFamily:'Syne', fontSize:16, fontWeight:600, color:T.pri, lineHeight:1.25, flex:1 }}>{job.title}</p>
+            <div style={{ flexShrink:0, background:T.accentDim, border:`0.5px solid ${T.borderAcc}`, borderRadius:999, padding:'3px 9px' }}>
+              <span style={{ fontFamily:'DM Mono', fontSize:11, color:T.accent, fontWeight:500 }}>{job.match}%</span>
+            </div>
+          </div>
+          <p style={{ fontFamily:'Inter', fontSize:12.5, color:T.sec, marginTop:3 }}>{job.company} · {job.location}</p>
+        </div>
+      </div>
+
+      {/* Stat pills */}
+      <div style={{ display:'flex', gap:7, marginBottom:14 }}>
+        <div style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:8, padding:'5px 10px' }}>
+          <span style={{ fontFamily:'DM Mono', fontSize:11, color:T.sec }}>{job.salary}</span>
+        </div>
+        <div style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:8, padding:'5px 10px' }}>
+          <span style={{ fontFamily:'Inter', fontSize:11, color:T.mut }}>{job.type}</span>
+        </div>
+      </div>
+
+      {/* Skill tags */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:14 }}>
+        {job.tags.map(tag => (
+          <div key={tag} style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:6, padding:'4px 9px' }}>
+            <span style={{ fontFamily:'Inter', fontSize:11, color:T.sec }}>{tag}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider */}
+      <div style={{ height:'0.5px', background:T.border, margin:'0 0 14px' }} />
+
+      {/* Description */}
+      <p style={{ fontFamily:'Inter', fontSize:13, color:T.sec, lineHeight:1.65,
+        display:'-webkit-box', WebkitLineClamp:4, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+        {job.desc}
+      </p>
+    </div>
+  );
+}
+
+/* ─── Swipe Deck ──────────────────────────────────────────────────────── */
+function SwipeDeck({ jobs, toast, onApply, onSkip, onSave }) {
+  const [top,    setTop]    = useState(0);
+  const [dx,     setDx]     = useState(0);
+  const [drag,   setDrag]   = useState(false);
+  const [flung,  setFlung]  = useState(false);
+  const [dir,    setDir]    = useState(null);
+  const startX = useRef(null);
+
+  const THRESH = 80;
+  const vis = jobs.slice(top, top+3);
+
+  const pDown = e => { startX.current = e.clientX; setDrag(true); };
+  const pMove = e => { if(!drag || startX.current==null) return; setDx(e.clientX - startX.current); };
+
+  async function doFling(d) {
+    setFlung(true); setDir(d);
+    d==='right' ? onApply(jobs[top]) : onSkip(jobs[top]);
+    await new Promise(r=>setTimeout(r,320));
+    setTop(i=>i+1); setDx(0); setFlung(false); setDir(null);
+  }
+
+  const pUp = async () => {
+    if(!drag) return;
+    setDrag(false);
+    const snap = dx;
+    startX.current = null;
+    if(Math.abs(snap)>=THRESH) await doFling(snap>0?'right':'left');
+    else setDx(0);
+  };
+
+  if(top>=jobs.length) return (
+    <div style={{ height:480, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16 }}>
+      <div style={{ width:56, height:56, borderRadius:18, background:T.accentDim, border:`0.5px solid ${T.borderAcc}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 13L9 17L19 7" stroke={T.accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </div>
+      <p style={{ fontFamily:'Syne', fontSize:17, fontWeight:500, color:T.pri }}>Deck complete</p>
+      <p style={{ fontFamily:'Inter', fontSize:13, color:T.sec }}>New jobs refresh every few hours.</p>
+    </div>
+  );
+
+  return (
+    <div style={{ position:'relative', height:480, touchAction:'none' }}
+      onMouseDown={pDown} onMouseMove={pMove} onMouseUp={pUp} onMouseLeave={pUp}>
+      {[...vis].reverse().map((job, ri) => {
+        const oi = (vis.length-1)-ri;
+        return <JobCard key={job.id} job={job} offsetIndex={oi}
+          dragX={oi===0?dx:0} dragging={drag&&oi===0}
+          flung={flung&&oi===0} flingDir={dir} />;
+      })}
+    </div>
+  );
+}
+
+/* ─── Circle Button ───────────────────────────────────────────────────── */
+function CircleBtn({ size, color, bg, onClick, disabled, title, children }) {
+  const [hov, setHov] = useState(false);
+  const [pre, setPre] = useState(false);
+  return (
+    <button title={title} onClick={!disabled?onClick:undefined} disabled={disabled}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>{setHov(false);setPre(false);}}
+      onMouseDown={()=>setPre(true)} onMouseUp={()=>setPre(false)}
+      style={{
+        width:size, height:size, borderRadius:'50%',
+        background:bg, border:`0.5px solid ${color}50`,
+        color, cursor:disabled?'not-allowed':'pointer',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        outline:'none', opacity:disabled?0.3:1,
+        transform:pre?'scale(0.91)':hov?'translateY(-3px)':'none',
+        transition:'transform 0.12s ease, box-shadow 0.15s',
+        boxShadow:hov&&!disabled?`0 6px 20px ${color}28`:'none',
+      }}>
+      {children}
+    </button>
+  );
+}
+
+/* ─── Counter Pill ────────────────────────────────────────────────────── */
+function Pill({ value, label, bg, border, color }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:5, background:bg, border:`0.5px solid ${border}`, borderRadius:999, padding:'4px 10px' }}>
+      <span style={{ fontFamily:'DM Mono', fontSize:12, fontWeight:500, color }}>{value}</span>
+      <span style={{ fontFamily:'Inter', fontSize:12, color:T.mut }}>{label}</span>
+    </div>
+  );
+}
+
+/* ─── Skill Ticker ────────────────────────────────────────────────────── */
+const SKILLS = ['TypeScript','React','Next.js','Node.js','PostgreSQL','GraphQL','AWS','Rust','Go','Python','Redis','Kafka'];
+function SkillTicker() {
+  const doubled = [...SKILLS, ...SKILLS];
+  return (
+    <div style={{ overflow:'hidden', marginTop:24, position:'relative' }}>
+      <div style={{ display:'flex', gap:8, animation:'marquee 18s linear infinite', width:'max-content' }}>
+        {doubled.map((s,i) => (
+          <div key={i} style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:6, padding:'5px 10px', flexShrink:0 }}>
+            <span style={{ fontFamily:'Inter', fontSize:11, color:T.sec }}>{s}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Swipe Page ─────────────────────────────────────────────────────── */
+function SwipePage({ nav, toast }) {
+  const [q, setQ] = useState(0);
+  const [s, setS] = useState(0);
+
+  return (
+    <div style={{ animation:'page-enter 0.3s ease' }}>
+      {/* Header */}
+      <header style={{ marginBottom:28, display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+        <div>
+          <h1 style={{ fontFamily:'Syne', fontSize:22, fontWeight:500, color:T.pri, letterSpacing:'-0.01em' }}>JobFill</h1>
+          <p style={{ fontFamily:'Inter', fontSize:13, color:T.sec, marginTop:2 }}>Swipe right to auto-apply via ATS.</p>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <button onClick={()=>nav('dashboard')} style={{ fontFamily:'Inter', fontSize:12, color:T.mut, background:'none', border:`0.5px solid ${T.border}`, cursor:'pointer', borderRadius:8, padding:'5px 10px' }}>
+            Dashboard
+          </button>
+          <Pill value={s} label="saved"  bg={T.blueDim}   border="rgba(55,138,221,0.22)" color={T.blue}   />
+          <Pill value={q} label="queued" bg={T.accentDim} border={T.borderAcc}            color={T.accent} />
+        </div>
+      </header>
+
+      {/* Deck */}
+      <SwipeDeck jobs={JOBS} toast={toast}
+        onApply={j=>{ setQ(n=>n+1); toast(`Queued ${j.title} at ${j.company}`, 'success'); }}
+        onSkip={j=>  toast(`Skipped ${j.title}`, 'info')}
+        onSave={()=> setS(n=>n+1)} />
+
+      {/* Skill ticker */}
+      <SkillTicker />
+
+      {/* Action buttons */}
+      <div style={{ marginTop:28, display:'flex', alignItems:'center', justifyContent:'center', gap:20 }}>
+        <CircleBtn size={56} color={T.red}    bg={T.redDim}    title="Skip"  onClick={()=>toast('Skipped','info')}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 5L15 15M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+        </CircleBtn>
+        <CircleBtn size={44} color={T.blue}   bg={T.blueDim}   title="Save"  onClick={()=>{setS(n=>n+1);toast('Saved for later','info');}}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13C8 13 2 9.5 2 5.5A3.5 3.5 0 0 1 8 3.9A3.5 3.5 0 0 1 14 5.5C14 9.5 8 13 8 13Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+        </CircleBtn>
+        <CircleBtn size={56} color={T.accent} bg={T.accentDim} title="Apply" onClick={()=>{setQ(n=>n+1);toast(`Queued — applying now`,'success');}}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4.5 10.5L9 15L15.5 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </CircleBtn>
+      </div>
+
+      {/* Queue bar */}
+      {q>0 && (
+        <div style={{ marginTop:22, display:'flex', alignItems:'center', justifyContent:'center', gap:8, background:T.surface, border:`0.5px solid ${T.border}`, borderRadius:12, padding:'11px 20px', animation:'fade-up 0.25s ease' }}>
+          <div style={{ width:8, height:8, borderRadius:'50%', background:T.accent, animation:'pulse-ring 2s infinite' }} />
+          <span style={{ fontFamily:'Inter', fontSize:13, color:T.sec }}>
+            <span style={{ fontFamily:'DM Mono', color:T.accent }}>{q}</span>
+            {' '}job{q!==1?'s':''} queued to apply
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Dashboard ──────────────────────────────────────────────────────── */
+const DASH = [
+  { label:'Applied',   dot:T.accent, cards:[
+    { title:'Senior FE',       company:'Notion',   date:'Apr 21', note:'Submitted via Greenhouse.' },
+    { title:'Staff Engineer',  company:'Figma',    date:'Apr 19', note:null },
+  ]},
+  { label:'Interview', dot:T.blue, cards:[
+    { title:'Product Engineer',company:'Loom',     date:'Apr 15', note:'Technical screen Thu 3pm.' },
+  ]},
+  { label:'Offer',     dot:'#A78BFA', cards:[] },
+  { label:'Rejected',  dot:T.red, cards:[
+    { title:'SWE L5',          company:'Google',   date:'Apr 10', note:'Required fields missing.' },
+  ]},
+  { label:'Queued',    dot:T.mut, cards:[
+    { title:'Senior FE',       company:'Stripe',   date:null,     note:null },
+    { title:'Staff SWE',       company:'Linear',   date:null,     note:null },
+    { title:'Product Eng.',    company:'Vercel',   date:null,     note:null },
+  ]},
+];
+
+function DashboardPage({ nav }) {
+  const total = DASH.reduce((s,c)=>s+c.cards.length, 0);
+  return (
+    <div style={{ animation:'page-enter 0.3s ease' }}>
+      {/* Header */}
+      <div style={{ marginBottom:28, display:'flex', alignItems:'flex-end', justifyContent:'space-between' }}>
+        <div>
+          <h1 style={{ fontFamily:'Syne', fontSize:22, fontWeight:500, color:T.pri }}>Applications</h1>
+          <p style={{ fontFamily:'Inter', fontSize:13, color:T.sec, marginTop:4 }}>{total} applications tracked.</p>
+        </div>
+        <button onClick={()=>nav('swipe')} style={{
+          fontFamily:'Inter', fontSize:13, fontWeight:500, color:T.acc,
+          background:T.accentDim, border:`0.5px solid ${T.borderAcc}`,
+          borderRadius:9, padding:'8px 16px', cursor:'pointer',
+        }}>
+          Back to swiping
+        </button>
+      </div>
+
+      {/* Kanban board */}
+      <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:8 }}>
+        {DASH.map(col => (
+          <div key={col.label} style={{
+            flex:'0 0 196px', background:T.surface,
+            border:`0.5px solid ${T.border}`, borderRadius:16,
+            padding:'16px 14px', minHeight:220,
+          }}>
+            {/* Col header */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+              <div style={{ width:7, height:7, borderRadius:'50%', background:col.dot, flexShrink:0 }} />
+              <span style={{ fontFamily:'Syne', fontSize:10.5, fontWeight:600, color:T.sec, letterSpacing:'0.07em', textTransform:'uppercase' }}>{col.label}</span>
+              <span style={{ marginLeft:'auto', fontFamily:'DM Mono', fontSize:11, color:T.mut }}>{col.cards.length}</span>
+            </div>
+            {/* Cards */}
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {col.cards.map((card,i) => (
+                <div key={i} style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:11, padding:'12px 13px' }}>
+                  <p style={{ fontFamily:'Inter', fontSize:13, fontWeight:500, color:T.pri, lineHeight:1.3 }}>{card.title}</p>
+                  <p style={{ fontFamily:'Inter', fontSize:12, color:T.sec, marginTop:2 }}>{card.company}</p>
+                  {card.date && <p style={{ fontFamily:'DM Mono', fontSize:11, color:T.mut, marginTop:6 }}>{card.date}</p>}
+                  {card.note && <p style={{ fontFamily:'Inter', fontSize:11, color:T.mut, marginTop:6, lineHeight:1.45,
+                    display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{card.note}</p>}
+                </div>
+              ))}
+              {!col.cards.length && <p style={{ fontFamily:'Inter', fontSize:12, color:T.mut, textAlign:'center', paddingTop:22 }}>—</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Stats row */}
+      <div style={{ marginTop:24, display:'flex', gap:10 }}>
+        {[
+          { label:'Applied this week', value:'6',  color:T.accent },
+          { label:'Interview rate',    value:'33%', color:T.blue },
+          { label:'Avg. fields filled',value:'12',  color:'#A78BFA' },
+        ].map(s => (
+          <div key={s.label} style={{ flex:1, background:T.surface, border:`0.5px solid ${T.border}`, borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontFamily:'DM Mono', fontSize:22, fontWeight:500, color:s.color }}>{s.value}</p>
+            <p style={{ fontFamily:'Inter', fontSize:11, color:T.mut, marginTop:4 }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Profile / Onboarding preview ──────────────────────────────────── */
+function ProfilePage({ nav }) {
+  const fields = [
+    { section:'Personal',       items:['Fernando Uhart','feruhart@example.com','+1 416 555 0100','Toronto, ON, Canada'] },
+    { section:'Education',      items:['University of Toronto','B.Sc. Computer Science','2024'] },
+    { section:'Work',           items:['Canadian Citizen','CA$130k','TypeScript, React, Next.js, Node.js, PostgreSQL'] },
+    { section:'Links',          items:['linkedin.com/in/feruhart','github.com/feruhart','feruhart.dev'] },
+  ];
+  return (
+    <div style={{ animation:'page-enter 0.3s ease' }}>
+      <div style={{ marginBottom:28, display:'flex', alignItems:'flex-end', justifyContent:'space-between' }}>
+        <div>
+          <h1 style={{ fontFamily:'Syne', fontSize:22, fontWeight:500, color:T.pri }}>Your Profile</h1>
+          <p style={{ fontFamily:'Inter', fontSize:13, color:T.sec, marginTop:4 }}>JobFill uses this to auto-fill ATS forms.</p>
+        </div>
+        <button onClick={()=>nav('swipe')} style={{ fontFamily:'Inter', fontSize:13, fontWeight:500, color:T.acc, background:T.accentDim, border:`0.5px solid ${T.borderAcc}`, borderRadius:9, padding:'8px 16px', cursor:'pointer' }}>
+          Start swiping
+        </button>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        {fields.map(sec => (
+          <div key={sec.section} style={{ background:T.surface, border:`0.5px solid ${T.border}`, borderRadius:16, padding:'18px 20px' }}>
+            <p style={{ fontFamily:'Syne', fontSize:11, fontWeight:500, color:T.mut, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>{sec.section}</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {sec.items.map((v,i) => (
+                <div key={i} style={{ background:T.elevated, border:`0.5px solid ${T.border}`, borderRadius:8, padding:'9px 14px' }}>
+                  <span style={{ fontFamily:'Inter', fontSize:13, color:T.sec }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {/* Resume */}
+        <div style={{ background:T.surface, border:`0.5px solid ${T.border}`, borderRadius:16, padding:'18px 20px' }}>
+          <p style={{ fontFamily:'Syne', fontSize:11, fontWeight:500, color:T.mut, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:12 }}>Resume</p>
+          <div style={{ border:`0.5px dashed ${T.borderHov}`, borderRadius:11, padding:'18px 20px', display:'flex', alignItems:'center', gap:12 }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4C3 2.895 3.895 2 5 2H9.586L13 5.414V12C13 13.105 12.105 14 11 14H5C3.895 14 3 13.105 3 12V4Z" stroke={T.mut} strokeWidth="1"/><path d="M9 2V6H13" stroke={T.mut} strokeWidth="1"/><path d="M6 9H10M8 7V11" stroke={T.mut} strokeWidth="1" strokeLinecap="round"/></svg>
+            <div>
+              <p style={{ fontFamily:'Inter', fontSize:13, color:T.pri }}>feruhart-resume.pdf</p>
+              <p style={{ fontFamily:'Inter', fontSize:11, color:T.mut, marginTop:2 }}>Click to replace</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Nav bar ────────────────────────────────────────────────────────── */
+function NavBar({ screen, setScreen }) {
+  const tabs = [
+    { id:'swipe', icon:(active)=>(
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <rect x="2" y="2" width="14" height="14" rx="4" stroke="currentColor" strokeWidth="1.3"/>
+        <path d="M6 9l2.5 2.5L12 6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    )},
+    { id:'dashboard', icon:(active)=>(
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <rect x="2" y="2" width="6" height="7" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+        <rect x="10" y="2" width="6" height="4" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+        <rect x="2" y="11" width="6" height="5" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+        <rect x="10" y="8" width="6" height="8" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+      </svg>
+    )},
+    { id:'profile', icon:(active)=>(
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.3"/>
+        <path d="M3 15c0-3.314 2.686-5 6-5s6 1.686 6 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      </svg>
+    )},
+  ];
+
+  return (
+    <div style={{
+      position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
+      width:'100%', maxWidth:480,
+      background:`${T.surface}EE`, backdropFilter:'blur(20px)',
+      borderTop:`0.5px solid ${T.border}`,
+      display:'flex', padding:'12px 0 20px',
+      zIndex:50,
+    }}>
+      {tabs.map(tab => {
+        const active = screen === tab.id;
+        return (
+          <button key={tab.id} onClick={()=>setScreen(tab.id)} style={{
+            flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+            background:'none', border:'none', cursor:'pointer', gap:4,
+            color:active?T.accent:T.mut, transition:'color 0.15s',
+          }}>
+            {tab.icon(active)}
+            {active && <div style={{ width:4, height:4, borderRadius:'50%', background:T.accent }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── App root ───────────────────────────────────────────────────────── */
+function App() {
+  const [screen, setScreen] = useState('swipe');
+  const { list, toast } = useToast();
+
+  return (
+    <div style={{ width:'100%', maxWidth:480, minHeight:'100vh', padding:'40px 24px 100px', position:'relative' }}>
+      {screen === 'swipe'     && <SwipePage     nav={setScreen} toast={toast} />}
+      {screen === 'dashboard' && <DashboardPage nav={setScreen} />}
+      {screen === 'profile'   && <ProfilePage   nav={setScreen} />}
+      <NavBar screen={screen} setScreen={setScreen} />
+      <Toasts list={list} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
