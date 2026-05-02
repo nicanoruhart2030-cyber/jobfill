@@ -8,6 +8,6 @@ export async function GET() {
     const jobs = await getSwipeJobs();
     return NextResponse.json({ jobs });
   } catch {
-    return NextResponse.json({ jobs: [] }, { status: 500 });
+    return NextResponse.json({ jobs: [], error: 'Failed to load jobs' }, { status: 500 });
   }
 }

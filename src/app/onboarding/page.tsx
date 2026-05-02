@@ -1,5 +1,6 @@
 'use client';
 
+import { useUser } from '@clerk/nextjs';
 import {
   ChangeEvent,
   DragEvent,
@@ -10,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useClerkSupabase } from '@/lib/supabase/clerk-browser';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -54,12 +55,15 @@ const STEPS = ['Personal info', 'Education & career', 'Upload your resume'];
 export default function OnboardingPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { user, isLoaded: userLoaded } = useUser();
+  const supabase = useClerkSupabase();
 
   const [form, setForm]         = useState<FormState>(INITIAL);
   const [skills, setSkills]     = useState<string[]>([]);
   const [skillDraft, setDraft]  = useState('');
   const [resumeFile, setFile]   = useState<File | null>(null);
   const [existingResume, setExistingResume] = useState<string | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [step, setStep]         = useState(0);
   const [saving, setSaving]     = useState(false);
   const [loaded, setLoaded]     = useState(false);
@@ -68,27 +72,51 @@ export default function OnboardingPage() {
 
   /* ── Load existing profile ── */
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+    if (!userLoaded) return;
+    if (!user) {
+      router.replace('/sign-in');
+      return;
+    }
 
-      const { data } = await supabase
-        .from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+    void (async () => {
+      const sb = supabase;
+      if (!sb) return;
+
+      let { data } = await sb
+        .from('profiles')
+        .select('*')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+
+      if (!data) {
+        await fetch('/api/profile/ensure', { method: 'POST' });
+        ({ data } = await sb
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', user.id)
+          .maybeSingle());
+      }
+
+      const row = data;
+      const email =
+        row?.email ??
+        user.primaryEmailAddress?.emailAddress ??
+        user.emailAddresses[0]?.emailAddress ??
+        '';
+      if (row?.user_id) setProfileUserId(row.user_id);
 
       setForm((prev) => ({
         ...prev,
-        ...(data ?? {}),
-        email: data?.email ?? user.email ?? '',
-        country: data?.country ?? 'Canada',
-        grad_year: data?.grad_year?.toString() ?? '',
+        ...(row ?? {}),
+        email,
+        country: row?.country ?? 'Canada',
+        grad_year: row?.grad_year?.toString() ?? '',
       }));
-      if (Array.isArray(data?.skills)) setSkills(data!.skills);
-      if (data?.resume_url) setExistingResume(data.resume_url.split('/').pop() ?? 'resume.pdf');
+      if (Array.isArray(row?.skills)) setSkills(row!.skills);
+      if (row?.resume_url) setExistingResume(row.resume_url.split('/').pop() ?? 'resume.pdf');
       setLoaded(true);
-    }
-    void load();
-  }, [router]);
+    })();
+  }, [router, supabase, user, userLoaded]);
 
   /* ── Helpers ── */
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -151,20 +179,32 @@ export default function OnboardingPage() {
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canAdvance()) return;
+    if (!supabase || !user) {
+      toast('Please sign in', 'error');
+      router.replace('/sign-in');
+      return;
+    }
     setSaving(true);
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    let internalId = profileUserId;
+    if (!internalId) {
+      await fetch('/api/profile/ensure', { method: 'POST' });
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      internalId = row?.user_id ?? null;
+    }
+    if (!internalId) {
       setSaving(false);
-      toast('Please sign in', 'error');
-      router.push('/login');
+      toast('Profile not ready — try again.', 'error');
       return;
     }
 
     let resumePath: string | undefined;
     if (resumeFile) {
-      resumePath = `${user.id}/${Date.now()}-${resumeFile.name}`;
+      resumePath = `${internalId}/${Date.now()}-${resumeFile.name}`;
       const { error: uploadErr } = await supabase.storage
         .from('resumes')
         .upload(resumePath, resumeFile, { contentType: 'application/pdf', upsert: true });
@@ -177,7 +217,8 @@ export default function OnboardingPage() {
 
     const { error: upsertErr } = await supabase.from('profiles').upsert(
       {
-        user_id: user.id,
+        user_id: internalId,
+        clerk_user_id: user.id,
         ...form,
         grad_year: form.grad_year ? Number(form.grad_year) : null,
         skills,
@@ -198,23 +239,10 @@ export default function OnboardingPage() {
   if (!loaded) {
     return (
       <main
-        style={{
-          minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
-          background: 'var(--bg-base)',
-        }}
+        className="page-enter grid min-h-[100vh] place-items-center"
+        style={{ background: 'var(--bg)' }}
       >
-        <div
-          style={{
-            width: 20,
-            height: 20,
-            border: '1.5px solid var(--border)',
-            borderTopColor: 'var(--accent)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-          }}
-        />
+        <span className="load-dot" aria-label="Loading" />
       </main>
     );
   }

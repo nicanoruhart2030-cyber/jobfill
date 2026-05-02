@@ -15,7 +15,7 @@ type SwipeDeckProps = {
   jobs: JobCardData[];
   profileSkills: string[];
   onSwipeApply: (job: JobCardData) => Promise<void>;
-  onSwipeSkip:  (job: JobCardData) => void;
+  onSwipeSkip:  () => void;
   onSaveLater:  (job: JobCardData) => void;
 };
 
@@ -43,18 +43,18 @@ export function SwipeDeck({ jobs, profileSkills, onSwipeApply, onSwipeSkip, onSa
   );
 
   /* ── fling: animate out then advance ── */
-  const fling = useCallback(async (dir: Direction) => {
+  const fling = useCallback(async (dir: Direction, opts?: { silent?: boolean }) => {
     if (isFling || !activeJob) return;
     const currentJob = activeJob;
 
     setIsFling(true);
     setDragX(dir === 'right' ? FLING_X : -FLING_X);
 
-    // fire callback concurrently — don't block animation
-    if (dir === 'right') void onSwipeApply(currentJob);
-    else onSwipeSkip(currentJob);
+    if (!opts?.silent) {
+      if (dir === 'right') void onSwipeApply(currentJob);
+      else onSwipeSkip();
+    }
 
-    // wait for fling transition (0.3s) then reset
     await new Promise<void>((r) => setTimeout(r, 320));
     setActiveIndex((i) => i + 1);
     setDragX(0);
@@ -141,8 +141,8 @@ export function SwipeDeck({ jobs, profileSkills, onSwipeApply, onSwipeSkip, onSa
             /* Top card: follow drag or fling */
             const cardX      = isTop ? dragX : 0;
             const cardY      = isTop ? dragY * 0.3 : 0;
-            const rawRotate  = isTop ? dragX * 0.06 : 0;
-            const cardRotate = isTop ? Math.max(-20, Math.min(20, rawRotate)) : 0;
+            const rawRotate = isTop ? (dragX / THRESHOLD) * 5 : 0;
+            const cardRotate = isTop ? Math.max(-8, Math.min(8, rawRotate)) : 0;
 
             /* Transition: none while dragging (direct follow), fling on release */
             const transition = isTop
@@ -170,7 +170,7 @@ export function SwipeDeck({ jobs, profileSkills, onSwipeApply, onSwipeSkip, onSa
               >
                 <JobCard
                   job={job}
-                  matchPercent={matchByIndex[realIndex] ?? 0}
+                  matchPercent={job.match_score ?? matchByIndex[realIndex] ?? 0}
                   offsetIndex={offsetIndex}
                   isDragging={isTop && isDragging}
                   dragX={isTop ? dragX : 0}
@@ -183,7 +183,11 @@ export function SwipeDeck({ jobs, profileSkills, onSwipeApply, onSwipeSkip, onSa
       {/* ── Action bar ── */}
       <ActionBar
         onSkip={() => void fling('left')}
-        onSave={() => onSaveLater(activeJob)}
+        onSave={() => {
+          if (!activeJob || isFling) return;
+          onSaveLater(activeJob);
+          void fling('left', { silent: true });
+        }}
         onApply={() => void fling('right')}
         disabled={isFling}
       />

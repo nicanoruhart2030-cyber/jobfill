@@ -1,11 +1,12 @@
 'use client';
 
 import type { JobCardData } from '@/lib/types';
+import { jdBullets } from '@/lib/jdBullets';
 
 type JobCardProps = {
   job: JobCardData;
   matchPercent: number;
-  offsetIndex: number;   // 0 = top, 1 = mid, 2 = back
+  offsetIndex: number;
   isDragging: boolean;
   dragX: number;
 };
@@ -14,21 +15,20 @@ function initials(company: string) {
   return company.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-/* Stack transform per layer — perspective scale from spec */
-const STACK: Array<{ scale: number; y: number }> = [
-  { scale: 1,    y: 0  },
-  { scale: 0.96, y: 10 },
-  { scale: 0.92, y: 20 },
+const STACK: Array<{ scale: number; y: number; opacity: number }> = [
+  { scale: 1, y: 0, opacity: 1 },
+  { scale: 0.96, y: 12, opacity: 0.55 },
+  { scale: 0.92, y: 24, opacity: 0.35 },
 ];
 
 export function JobCard({ job, matchPercent, offsetIndex, dragX }: JobCardProps) {
   const absDrag = Math.abs(dragX);
-  /* Spec: overlay opacity scales linearly from 20px → 80px drag */
-  const applyOpacity = dragX > 20  ? Math.min(1, (absDrag - 20) / 60) : 0;
-  const skipOpacity  = dragX < -20 ? Math.min(1, (absDrag - 20) / 60) : 0;
+  const applyOpacity = dragX > 20 ? Math.min(1, (absDrag - 20) / 60) : 0;
+  const skipOpacity = dragX < -20 ? Math.min(1, (absDrag - 20) / 60) : 0;
 
   const s = STACK[Math.min(offsetIndex, 2)];
   const isTop = offsetIndex === 0;
+  const bullets = jdBullets(job.description, 4);
 
   return (
     <div
@@ -37,172 +37,122 @@ export function JobCard({ job, matchPercent, offsetIndex, dragX }: JobCardProps)
         transform: `scale(${s.scale}) translateY(${s.y}px)`,
         zIndex: 30 - offsetIndex,
         transformOrigin: 'bottom center',
+        opacity: s.opacity,
       }}
     >
       <div
-        className="h-full w-full overflow-hidden"
+        className="h-full w-full overflow-hidden rounded-xl"
         style={{
-          background: 'var(--bg-surface)',
-          border: '0.5px solid var(--border)',
-          borderRadius: 14,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
         }}
       >
-        {/* ── Apply / Skip overlays ── */}
         {isTop && (
-          <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ borderRadius: 14 }}>
-            {/* Apply — right drag */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
             <div
-              className="absolute left-5 top-5 flex items-center gap-1.5 px-3 py-1.5"
+              className="absolute left-5 top-5 flex items-center gap-1.5 px-3 py-1.5 opacity-0"
               style={{
                 opacity: applyOpacity,
                 background: 'var(--accent-dim)',
-                border: '0.5px solid var(--border-accent)',
+                border: '1px solid rgba(0,229,160,0.25)',
                 borderRadius: 6,
-                transition: 'opacity 0.05s linear',
+                transition: 'opacity 0.06s linear',
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M2.5 6.5L5.5 9.5L10.5 3.5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden>
+                <path d="M2.5 6.5L5.5 9.5L10.5 3.5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span style={{ color: 'var(--accent)', fontSize: 12, fontFamily: 'Inter', fontWeight: 500, letterSpacing: '0.04em' }}>
-                Apply
+              <span style={{ color: 'var(--accent)', fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 500 }}>
+                Autofill
               </span>
             </div>
-            {/* Skip — left drag */}
             <div
               className="absolute right-5 top-5 flex items-center gap-1.5 px-3 py-1.5"
               style={{
                 opacity: skipOpacity,
-                background: 'var(--danger-dim)',
-                border: '0.5px solid var(--border-danger)',
+                background: 'var(--destructive-dim)',
+                border: '1px solid rgba(255,77,77,0.25)',
                 borderRadius: 6,
-                transition: 'opacity 0.05s linear',
+                transition: 'opacity 0.06s linear',
               }}
             >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M2 2L9 9M9 2L2 9" stroke="var(--danger)" strokeWidth="1.5" strokeLinecap="round"/>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
+                <path d="M2 2L9 9M9 2L2 9" stroke="var(--destructive)" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
-              <span style={{ color: 'var(--danger)', fontSize: 12, fontFamily: 'Inter', fontWeight: 500, letterSpacing: '0.04em' }}>
+              <span style={{ color: 'var(--destructive)', fontSize: 12, fontFamily: 'var(--font-body)', fontWeight: 500 }}>
                 Skip
               </span>
             </div>
           </div>
         )}
 
-        {/* ── Card body ── */}
         <div className="flex h-full flex-col p-6">
-
-          {/* Row 1: Logo + match badge */}
-          <div className="flex items-start justify-between mb-4">
-            {/* Company logo circle — single neutral style, no rainbow */}
+          <div className="mb-4 flex items-start justify-between gap-3">
             <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold"
               style={{
                 background: 'var(--accent)',
-                border: '0.5px solid var(--border-accent)',
-                color: 'var(--bg-base)',
-                fontFamily: 'Syne, sans-serif',
-                fontSize: 18,
-                fontWeight: 500,
-                letterSpacing: '-0.02em',
+                color: 'var(--bg)',
+                fontFamily: 'var(--font-display)',
+                fontWeight: 700,
               }}
             >
               {initials(job.company)}
             </div>
-
-            {/* Match % — DM Mono, accent border pill */}
             <div
               className="shrink-0 px-2.5 py-1"
               style={{
-                background: 'transparent',
-                border: '0.5px solid var(--border-accent)',
+                border: '1px solid rgba(0,229,160,0.28)',
                 borderRadius: 999,
-                fontFamily: 'DM Mono, monospace',
-                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
                 fontWeight: 500,
                 color: 'var(--accent)',
-                letterSpacing: '0.02em',
               }}
             >
-              {matchPercent}%
+              Match score: {matchPercent}%
             </div>
           </div>
 
-          {/* Row 2: Job title + Company · Location */}
-          <div className="mb-4">
-            <p style={{ fontFamily: 'Inter', fontSize: 16, fontWeight: 500, color: 'var(--text-1)', lineHeight: 1.3 }}>
-              {job.title}
-            </p>
-            <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--text-2)', marginTop: 2 }}>
-              {job.company} · {job.location}
-            </p>
-          </div>
-
-          {/* Row 3: Stat pills — salary | job type */}
-          <div className="flex gap-2 mb-4 flex-wrap">
-            {job.salary_range || job.salary_display ? (
-              <StatPill mono>{job.salary_range ?? job.salary_display}</StatPill>
-            ) : null}
-            <StatPill>{job.job_type}</StatPill>
-          </div>
-
-          {/* Row 4: Skill tags — single neutral border-only style */}
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {job.tags.map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  fontFamily: 'Inter',
-                  fontSize: 11,
-                  color: 'var(--text-2)',
-                  background: 'transparent',
-                  border: '0.5px solid var(--border)',
-                  borderRadius: 6,
-                  padding: '3px 8px',
-                  lineHeight: 1.5,
-                }}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: '0.5px', background: 'var(--border)', marginBottom: 16, flexShrink: 0 }} />
-
-          {/* Row 5: Description — 4 lines max */}
-          <p
-            className="line-clamp-4"
-            style={{
-              fontFamily: 'Inter',
-              fontSize: 12,
-              color: 'var(--text-2)',
-              lineHeight: 1.7,
-            }}
+          <h3
+            className="mb-1 text-xl leading-tight tracking-tight text-[var(--text-primary)]"
+            style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}
           >
-            {job.description}
+            {job.company}
+          </h3>
+          <p className="mb-3 text-[15px] font-medium text-[var(--text-secondary)]" style={{ fontFamily: 'var(--font-body)' }}>
+            {job.title}
           </p>
+
+          <p
+            className="mb-4 text-[13px] text-[var(--text-secondary)]"
+            style={{ fontFamily: 'var(--font-mono)', fontWeight: 500 }}
+          >
+            {job.location}
+            {(job.salary_range || job.salary_display) && (
+              <>
+                <span className="mx-2 opacity-40">·</span>
+                {job.salary_range ?? job.salary_display}
+              </>
+            )}
+          </p>
+
+          <div className="mb-1 h-px w-full shrink-0" style={{ background: 'var(--border)' }} />
+
+          <ul className="mt-4 flex flex-col gap-2.5">
+            {bullets.map((b, i) => (
+              <li
+                key={i}
+                className="flex gap-2 text-[13px] leading-snug text-[var(--text-secondary)]"
+                style={{ fontFamily: 'var(--font-body)' }}
+              >
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--accent)] opacity-70" aria-hidden />
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </div>
-  );
-}
-
-function StatPill({ children, mono = false }: { children: React.ReactNode; mono?: boolean }) {
-  return (
-    <span
-      style={{
-        fontFamily: mono ? 'DM Mono' : 'Inter',
-        fontSize: 12,
-        color: 'var(--text-2)',
-        background: 'var(--bg-elevated)',
-        border: '0.5px solid var(--border)',
-        borderRadius: 6,
-        padding: '4px 10px',
-        lineHeight: 1.4,
-      }}
-    >
-      {children}
-    </span>
   );
 }

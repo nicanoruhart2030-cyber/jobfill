@@ -1,12 +1,13 @@
 'use client';
 
+import { useUser } from '@clerk/nextjs';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useClerkSupabase } from '@/lib/supabase/clerk-browser';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { CloseIcon, InboxIcon, LogoMark } from '@/components/ui/Icons';
-import type { ApplicationStatus } from '@/lib/types';
+import type { ApplicationRow, ApplicationStatus } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,19 +30,12 @@ type DashboardApplication = {
   } | null;
 };
 
-type ApplicationQueryRow = {
-  id: string;
-  status: ApplicationStatus;
-  notes: string | null;
-  cover_letter_used: string | null;
-  screenshot_url: string | null;
-  applied_at: string | null;
-  created_at: string;
-  jobs:
-    | { title: string; company: string; location: string; salary_range: string | null; job_type: string; description: string; tags: string[] }[]
-    | { title: string; company: string; location: string; salary_range: string | null; job_type: string; description: string; tags: string[] }
-    | null;
-};
+function salaryRangeFromJob(j: NonNullable<ApplicationRow['jobs']>): string | null {
+  if (j.salary_min != null && j.salary_max != null) return `$${j.salary_min}–${j.salary_max}`;
+  if (j.salary_min != null) return `$${j.salary_min}+`;
+  if (j.salary_max != null) return `Up to $${j.salary_max}`;
+  return null;
+}
 
 type BoardColumnKey =
   | 'queued'
@@ -61,7 +55,7 @@ const COLUMNS: Column[] = [
   { key: 'queued',    label: 'Queued',    dot: 'var(--text-3)' },
   { key: 'applying',  label: 'Applying',  dot: 'var(--accent)' },
   { key: 'applied',   label: 'Applied',   dot: 'var(--accent)' },
-  { key: 'interview', label: 'Interview', dot: 'var(--save)' },
+  { key: 'interview', label: 'Interview', dot: 'var(--accent)' },
   { key: 'offer',     label: 'Offer',     dot: 'var(--accent)' },
   { key: 'rejected',  label: 'Rejected',  dot: 'var(--danger)' },
 ];
@@ -117,9 +111,9 @@ function statusBadgeStyle(status: ApplicationStatus): {
       };
     case 'interview':
       return {
-        background: 'var(--save-dim)',
-        borderColor: 'var(--border-save)',
-        color: 'var(--save)',
+        background: 'var(--accent-dim)',
+        borderColor: 'var(--border-accent)',
+        color: 'var(--accent)',
       };
     case 'rejected':
     case 'failed':
@@ -146,52 +140,51 @@ function statusBadgeStyle(status: ApplicationStatus): {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user, isLoaded } = useUser();
   const [rows, setRows]       = useState<DashboardApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive]   = useState<DashboardApplication | null>(null);
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
-
-      const { data } = await supabase
-        .from('applications')
-        .select(
-          'id,status,notes,cover_letter_used,screenshot_url,applied_at,created_at,jobs(title,company,location,salary_range,job_type,description,tags)'
-        )
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      const mapped = ((data ?? []) as ApplicationQueryRow[]).map((row): DashboardApplication => {
-        const job = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
-        return {
-          id: row.id,
-          status: row.status,
-          notes: row.notes,
-          cover_letter_used: row.cover_letter_used,
-          screenshot_url: row.screenshot_url,
-          applied_at: row.applied_at,
-          created_at: row.created_at,
-          job: job
-            ? {
-                title: job.title,
-                company: job.company,
-                location: job.location,
-                salary_range: job.salary_range,
-                job_type: job.job_type,
-                description: job.description,
-                tags: job.tags ?? [],
-              }
-            : null,
-        };
-      });
-      setRows(mapped);
-      setLoading(false);
+    if (!isLoaded) return;
+    if (!user) {
+      router.replace('/sign-in');
+      return;
     }
-    void load();
-  }, [router]);
+    void fetch('/api/applications')
+      .then(async (r) => {
+        if (!r.ok) return { applications: [] as ApplicationRow[] };
+        return r.json() as Promise<{ applications?: ApplicationRow[] }>;
+      })
+      .then((j) => {
+        const apps = j.applications ?? [];
+        const mapped: DashboardApplication[] = apps.map((row) => {
+          const job = row.jobs;
+          return {
+            id: row.id,
+            status: row.status,
+            notes: row.error_message,
+            cover_letter_used: row.cover_letter,
+            screenshot_url: row.screenshot_url,
+            applied_at: row.applied_at,
+            created_at: row.created_at,
+            job: job
+              ? {
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  salary_range: salaryRangeFromJob(job),
+                  job_type: job.job_type,
+                  description: job.description ?? '',
+                  tags: job.tags ?? [],
+                }
+              : null,
+          };
+        });
+        setRows(mapped);
+        setLoading(false);
+      });
+  }, [router, user, isLoaded]);
 
   const grouped = useMemo(() => {
     const empty: Record<BoardColumnKey, DashboardApplication[]> = {
@@ -600,30 +593,37 @@ function KanbanColumn({
 
 function DetailDrawer({ app, onClose }: { app: DashboardApplication; onClose: () => void }) {
   const [shotUrl, setShotUrl] = useState<string | null>(null);
+  const supabase = useClerkSupabase();
 
   useEffect(() => {
     if (!app.screenshot_url) {
       setShotUrl(null);
       return;
     }
+    if (!supabase) return;
     setShotUrl(null);
     let cancelled = false;
-    const supabase = createClient();
     void supabase.storage
       .from('application-proofs')
       .createSignedUrl(app.screenshot_url, 3600)
-      .then(({ data, error }) => {
+      .then(
+        (res: {
+          data: { signedUrl: string } | null;
+          error: { message: string } | null;
+        }) => {
         if (cancelled) return;
+        const { data, error } = res;
         if (error || !data?.signedUrl) {
           setShotUrl('');
           return;
         }
         setShotUrl(data.signedUrl);
-      });
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [app.id, app.screenshot_url]);
+  }, [app.id, app.screenshot_url, supabase]);
 
   return (
     <div

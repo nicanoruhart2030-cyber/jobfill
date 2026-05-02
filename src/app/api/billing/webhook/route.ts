@@ -5,13 +5,19 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function customerIdFromStripe(
+  ref: string | Stripe.Customer | Stripe.DeletedCustomer | null,
+): string | null {
+  if (!ref) return null;
+  if (typeof ref === 'string') return ref;
+  if ('deleted' in ref && ref.deleted) return null;
+  return ref.id;
+}
+
 /**
- * Stripe webhook → flip profile.plan to 'pro' on successful checkout,
- * back to 'free' on subscription cancel.
+ * Stripe webhook — sync plan + store Stripe customer id.
  *
- * Required env:
- *   STRIPE_SECRET_KEY
- *   STRIPE_WEBHOOK_SECRET
+ * Env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
  */
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -38,36 +44,66 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
 
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.user_id;
-      if (userId) {
-        await supabase
-          .from('profiles')
-          .update({ plan: 'pro' })
-          .eq('user_id', userId);
-      }
-      break;
-    }
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.user_id;
+        if (!userId) break;
 
-    case 'customer.subscription.deleted': {
-      const sub = event.data.object as Stripe.Subscription;
-      const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
-      // Look up profile by email via Stripe customer
-      const customer = await stripe.customers.retrieve(customerId);
-      if (!customer.deleted && customer.email) {
-        await supabase
+        const customerId = customerIdFromStripe(session.customer);
+        const patch: { plan: string; stripe_customer_id?: string } = { plan: 'pro' };
+        if (customerId) patch.stripe_customer_id = customerId;
+
+        const { error } = await supabase.from('profiles').update(patch).eq('user_id', userId);
+        if (error) {
+          console.error('[stripe webhook] checkout.session.completed update failed');
+          return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId = customerIdFromStripe(sub.customer);
+        if (!customerId) break;
+
+        const pro = sub.status === 'active' || sub.status === 'trialing';
+        const { error } = await supabase
+          .from('profiles')
+          .update({ plan: pro ? 'pro' : 'free' })
+          .eq('stripe_customer_id', customerId);
+
+        if (error) {
+          console.error('[stripe webhook] subscription.updated update failed');
+          return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
+        }
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId = customerIdFromStripe(sub.customer);
+        if (!customerId) break;
+
+        const { error } = await supabase
           .from('profiles')
           .update({ plan: 'free' })
-          .eq('email', customer.email);
-      }
-      break;
-    }
+          .eq('stripe_customer_id', customerId);
 
-    default:
-      // Ignore unrelated events
-      break;
+        if (error) {
+          console.error('[stripe webhook] subscription.deleted update failed');
+          return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  } catch {
+    console.error('[stripe webhook] handler error');
+    return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

@@ -1,9 +1,12 @@
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { canQueueApplication } from "@/lib/billing";
-import { createClient } from "@/lib/supabase/server";
+import { ensureProfileForClerkUser, getProfileUserIdByClerk } from "@/lib/profile/ensure";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { BillingTier } from "@/lib/types";
+
+export const runtime = "nodejs";
 
 const queueRequestSchema = z.object({
   job: z.object({
@@ -24,26 +27,36 @@ function startOfMonthIso() {
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const supabaseAdmin = getSupabaseAdmin();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const payload = await request.json();
+  let internalUserId = await getProfileUserIdByClerk(clerkId);
+  if (!internalUserId) {
+    internalUserId = await ensureProfileForClerkUser();
+  }
+  if (!internalUserId) {
+    return NextResponse.json({ error: "Profile not ready" }, { status: 500 });
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
   const parsed = queueRequestSchema.safeParse(payload);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
+  const { data: profile } = await supabaseAdmin
     .from("profiles")
     .select("plan")
-    .eq("user_id", user.id)
+    .eq("user_id", internalUserId)
     .maybeSingle();
 
   const tier: BillingTier = profile?.plan === "pro" ? "pro" : "free";
@@ -51,7 +64,7 @@ export async function POST(request: Request) {
   const { count: monthlyCount, error: countError } = await supabaseAdmin
     .from("applications")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
+    .eq("user_id", internalUserId)
     .gte("created_at", startOfMonthIso());
 
   if (countError) {
@@ -96,7 +109,7 @@ export async function POST(request: Request) {
 
   const { error: queueError } = await supabaseAdmin.from("applications").upsert(
     {
-      user_id: user.id,
+      user_id: internalUserId,
       job_id: jobId,
       status: "queued",
     },

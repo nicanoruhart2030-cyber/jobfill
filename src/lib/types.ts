@@ -14,7 +14,9 @@ export type BillingTier = "free" | "pro";
 
 export type Profile = {
   id: string;
+  /** Internal UUID used for applications + storage paths. */
   user_id: string;
+  clerk_user_id?: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -33,9 +35,13 @@ export type Profile = {
   work_auth: string | null;
   salary_expectation: string | null;
   resume_url: string | null;
-  groq_api_key: string | null;
+  kimi_api_key: string | null;
+  /** Legacy column name in some DBs; prefer kimi_api_key */
+  groq_api_key?: string | null;
   skills: string[];
   plan?: "free" | "pro";
+  /** Set after first successful Stripe Checkout; used for subscription webhooks + reuse */
+  stripe_customer_id?: string | null;
   created_at: string;
 };
 
@@ -99,6 +105,7 @@ export type ApplicationRow = {
     salary_min: number | null;
     salary_max: number | null;
     tags: string[] | null;
+    description: string;
   } | null;
 };
 

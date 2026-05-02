@@ -113,7 +113,7 @@ export default function LandingPage() {
             </p>
             <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
               <Link
-                href="/signup"
+                href="/sign-up"
                 className="btn btn-primary"
                 style={{ height: 44, padding: '0 20px', fontSize: 14 }}
               >
@@ -492,7 +492,7 @@ export default function LandingPage() {
             </ul>
 
             <Link
-              href="/signup"
+              href="/sign-up"
               className="btn btn-secondary"
               style={{ width: '100%', height: 40, fontSize: 13 }}
             >
@@ -572,7 +572,7 @@ export default function LandingPage() {
             </ul>
 
             <Link
-              href="/signup?plan=pro"
+              href="/sign-up?plan=pro"
               className="btn btn-primary"
               style={{ width: '100%', height: 40, fontSize: 13 }}
             >
@@ -630,7 +630,7 @@ export default function LandingPage() {
             Free forever for 10 applications per month.
           </p>
           <Link
-            href="/signup"
+            href="/sign-up"
             className="btn btn-primary"
             style={{
               marginTop: 28,

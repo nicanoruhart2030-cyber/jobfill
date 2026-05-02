@@ -70,28 +70,33 @@ function makeJobFaceTexture(job: SwipeJob, colors: CssColors): THREE.CanvasTextu
   ctx.strokeRect(6, 6, w - 12, h - 12);
   ctx.globalAlpha = 1;
 
-  const initials = job.company.slice(0, 2).toUpperCase();
+  const company = job.company ?? "";
+  const titleRaw = job.title ?? "";
+  const salary = job.salary_display ?? "";
+  const tags = Array.isArray(job.tags) ? job.tags : [];
+
+  const initials = (company.slice(0, 2) || "·").toUpperCase();
   ctx.font = "700 80px Syne, sans-serif";
   ctx.fillStyle = colors.accent;
   ctx.fillText(initials, 36, 110);
 
   ctx.font = "500 30px Syne, sans-serif";
   ctx.fillStyle = colors.text1;
-  const title = job.title.length > 42 ? `${job.title.slice(0, 40)}…` : job.title;
+  const title = titleRaw.length > 42 ? `${titleRaw.slice(0, 40)}…` : titleRaw;
   ctx.fillText(title, 36, 190);
 
   ctx.font = "400 22px Inter, sans-serif";
   ctx.fillStyle = colors.text2;
-  ctx.fillText(job.company, 36, 230);
+  ctx.fillText(company, 36, 230);
 
   ctx.font = "500 28px DM Mono, monospace";
   ctx.fillStyle = colors.accent;
-  ctx.fillText(job.salary_display, 36, 290);
+  ctx.fillText(salary, 36, 290);
 
   ctx.font = "400 18px Inter, sans-serif";
   ctx.fillStyle = colors.text3;
   let y = 340;
-  for (const t of job.tags.slice(0, 4)) {
+  for (const t of tags.slice(0, 4)) {
     ctx.fillText(`· ${t}`, 36, y);
     y += 28;
   }

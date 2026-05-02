@@ -20,7 +20,7 @@ import {
   submitApplication,
   waitForSubmissionConfirmation,
 } from "@/workers/atsHandlers";
-import { generateCoverLetter } from "@/lib/groq";
+import { generateCoverLetter } from "@/lib/kimi";
 import { sendManualReviewEmail } from "@/lib/email/manualReview";
 
 type ClaimedApplication = {
@@ -191,13 +191,27 @@ async function runSingleApplication(claimed: ClaimedApplication): Promise<void> 
   if (!context) return;
 
   const { profile, job } = context;
-  const browser = await chromium.launch({ headless: true });
+  const headless = process.env.PLAYWRIGHT_HEADLESS !== "false";
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  try {
+    browser = await chromium.launch({ headless });
+  } catch {
+    await setApplicationStatus(claimed.id, {
+      status: "failed",
+      notes: "Browser launch failed.",
+    });
+    return;
+  }
+
   let screenshotBase64 = "";
   let fieldsFilledCount = 0;
 
   try {
     const atsType = detectAts(job.ats_url);
     const page = await browser.newPage({ viewport: { width: 1440, height: 2200 } });
+    page.setDefaultTimeout(
+      Math.min(Math.max(Number(process.env.PLAYWRIGHT_DEFAULT_TIMEOUT_MS) || 30_000, 5_000), 120_000),
+    );
     await page.goto(job.ats_url, { waitUntil: "domcontentloaded", timeout: 45_000 });
 
     if (await hasCaptcha(page)) {
@@ -319,7 +333,7 @@ async function runSingleApplication(claimed: ClaimedApplication): Promise<void> 
       fields_filled: fieldsFilledCount,
     });
   } finally {
-    await browser.close();
+    await browser?.close().catch(() => undefined);
   }
 }
 

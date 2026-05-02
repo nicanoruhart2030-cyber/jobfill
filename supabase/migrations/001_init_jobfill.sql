@@ -20,7 +20,7 @@ create table if not exists public.profiles (
   work_auth text,
   salary_expectation text,
   resume_url text,
-  groq_api_key text,
+  kimi_api_key text,
   skills text[] not null default '{}'::text[],
   created_at timestamptz not null default now()
 );

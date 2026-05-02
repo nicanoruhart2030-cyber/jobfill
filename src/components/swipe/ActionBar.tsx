@@ -1,20 +1,20 @@
 'use client';
 
 type ActionBarProps = {
-  onSkip:   () => void;
-  onSave:   () => void;
-  onApply:  () => void;
+  onSkip: () => void;
+  onSave: () => void;
+  onApply: () => void;
   disabled?: boolean;
 };
 
 const SkipIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"/>
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden>
+    <path d="M6 6L16 16M16 6L6 16" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
   </svg>
 );
 
 const SaveIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
     <path
       d="M8 13.5C8 13.5 1.5 9.5 1.5 5.5C1.5 3.567 3.067 2 5 2C6.18 2 7.22 2.618 8 3.5C8.78 2.618 9.82 2 11 2C12.933 2 14.5 3.567 14.5 5.5C14.5 9.5 8 13.5 8 13.5Z"
       stroke="currentColor"
@@ -25,104 +25,67 @@ const SaveIcon = () => (
   </svg>
 );
 
-const ApplyIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M4 10L8.5 14.5L16 6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+const AutofillIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <path
+      d="M13 2L4 14h7l-1 8 10-12h-7l1-8z"
+      fill="currentColor"
+    />
   </svg>
 );
 
-type CircleButtonProps = {
-  onClick:  () => void;
-  size:     number;
-  bg:       string;
-  border:   string;
-  color:    string;
-  disabled?: boolean;
-  children: React.ReactNode;
-  label:    string;
-};
-
-function CircleButton({ onClick, size, bg, border, color, disabled, children, label }: CircleButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: bg,
-        border: `0.5px solid ${border}`,
-        color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        transition: 'transform 0.15s ease, opacity 0.15s ease',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-      }}
-      onMouseDown={(e) => {
-        if (!disabled) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.93)';
-      }}
-      onMouseUp={(e) => {
-        if (!disabled) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 export function ActionBar({ onSkip, onSave, onApply, disabled = false }: ActionBarProps) {
+  const dim = disabled ? 0.4 : 1;
+
   return (
-    <div className="mt-7 flex items-center justify-center gap-6">
-      {/* Skip — 56px, danger */}
-      <CircleButton
-        onClick={onSkip}
-        size={56}
-        bg="var(--danger-dim)"
-        border="var(--border-danger)"
-        color="var(--danger)"
+    <div className="mt-6 flex items-center justify-center gap-5">
+      <button
+        type="button"
+        aria-label="Skip job"
         disabled={disabled}
-        label="Skip job"
+        onClick={onSkip}
+        className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+        style={{
+          background: 'var(--destructive-dim)',
+          border: '1px solid rgba(255,77,77,0.35)',
+          color: 'var(--destructive)',
+          opacity: dim,
+        }}
       >
         <SkipIcon />
-      </CircleButton>
+      </button>
 
-      {/* Save — 44px, save */}
-      <CircleButton
-        onClick={onSave}
-        size={44}
-        bg="var(--save-dim)"
-        border="var(--border-save)"
-        color="var(--save)"
+      <button
+        type="button"
+        aria-label="Autofill and apply"
         disabled={disabled}
-        label="Save for later"
+        onClick={onApply}
+        className="flex h-[68px] w-[68px] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+        style={{
+          background: 'var(--accent)',
+          border: 'none',
+          color: 'var(--bg)',
+          opacity: dim,
+        }}
+      >
+        <AutofillIcon />
+      </button>
+
+      <button
+        type="button"
+        aria-label="Save for later"
+        disabled={disabled}
+        onClick={onSave}
+        className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-90"
+        style={{
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-secondary)',
+          opacity: dim,
+        }}
       >
         <SaveIcon />
-      </CircleButton>
-
-      {/* Apply — 56px, accent */}
-      <CircleButton
-        onClick={onApply}
-        size={56}
-        bg="var(--accent-dim)"
-        border="var(--border-accent)"
-        color="var(--accent)"
-        disabled={disabled}
-        label="Apply to job"
-      >
-        <ApplyIcon />
-      </CircleButton>
+      </button>
     </div>
   );
 }

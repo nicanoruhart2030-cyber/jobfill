@@ -1,49 +1,72 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700&family=Inter:wght@400;500&family=DM+Mono:wght@400;500&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg-base:       oklch(8%  0.02 264);
-  --bg-surface:    oklch(12% 0.02 264);
-  --bg-elevated:   oklch(16% 0.025 264);
-  --bg-card:       oklch(14% 0.022 264);
+  --bg: #080810;
+  --surface: #0f0f1a;
+  --surface-2: #16162a;
+  --border: rgba(255, 255, 255, 0.06);
+  --text-primary: #f2f2f5;
+  --text-secondary: #7a7a9a;
+  --accent: #00e5a0;
+  --accent-dim: rgba(0, 229, 160, 0.12);
+  --destructive: #ff4d4d;
+  --destructive-dim: rgba(255, 77, 77, 0.12);
 
-  --accent:        oklch(65% 0.15 162);
-  --accent-dim:    oklch(65% 0.15 162 / 14%);
-  --accent-hover:  oklch(55% 0.15 162);
-  --accent-glow:   oklch(65% 0.15 162 / 25%);
+  /* Legacy aliases — keep API routes & existing logic untouched */
+  --bg-base: var(--bg);
+  --bg-surface: var(--surface);
+  --bg-elevated: var(--surface-2);
+  --bg-card: var(--surface);
+  --text-1: var(--text-primary);
+  --text-2: var(--text-secondary);
+  --text-3: #4a4a62;
+  --text-accent: var(--accent);
+  --danger: var(--destructive);
+  --danger-dim: var(--destructive-dim);
+  --border-hover: rgba(255, 255, 255, 0.12);
+  --border-accent: rgba(0, 229, 160, 0.28);
+  --border-danger: rgba(255, 77, 77, 0.28);
+  --accent-hover: #00c98c;
+  --save: var(--accent);
+  --save-dim: var(--accent-dim);
+  --border-save: var(--border-accent);
 
-  --danger:        oklch(58% 0.20 27);
-  --danger-dim:    oklch(58% 0.20 27 / 14%);
-  --danger-glow:   oklch(58% 0.20 27 / 25%);
-
-  --save:          oklch(60% 0.14 240);
-  --save-dim:      oklch(60% 0.14 240 / 14%);
-  --border-save:   oklch(60% 0.14 240 / 30%);
-
-  --text-1:        oklch(96% 0.008 264);
-  --text-2:        oklch(65% 0.015 264);
-  --text-3:        oklch(40% 0.012 264);
-  --text-accent:   oklch(65% 0.15 162);
-
-  --border:        oklch(100% 0 0 / 7%);
-  --border-hover:  oklch(100% 0 0 / 14%);
-  --border-accent: oklch(65% 0.15 162 / 30%);
-  --border-danger: oklch(58% 0.20 27 / 30%);
-
-  --font-display:  'Syne', sans-serif;
-  --font-body:     'Inter', sans-serif;
-  --font-mono:     'DM Mono', monospace;
-
-  --radius-sm:  6px;
-  --radius-md:  10px;
-  --radius-lg:  14px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
+
+  /* shadcn-style aliases (Tailwind theme + optional components) */
+  --background: var(--bg);
+  --foreground: var(--text-primary);
+  --muted-foreground: var(--text-secondary);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text-primary);
+  --card: var(--surface);
+  --card-foreground: var(--text-primary);
+
+  /* shadcn Button / forms */
+  --destructive-foreground: #fafafa;
+  --input: rgba(255, 255, 255, 0.09);
+  --ring: rgba(0, 229, 160, 0.35);
+  /* Muted surface for ghost/outline hover (not brand teal) */
+  --highlight: var(--surface-2);
+  --highlight-foreground: var(--text-primary);
 }
 
-*, *::before, *::after {
+html {
+  --font-display: var(--font-syne), "Syne", system-ui, sans-serif;
+  --font-body: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-dm), "DM Mono", ui-monospace, monospace;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -54,8 +77,8 @@ html {
 }
 
 body {
-  background: var(--bg-base);
-  color: var(--text-1);
+  background: var(--bg);
+  color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
@@ -74,33 +97,72 @@ button {
   background: none;
 }
 
-input, textarea, select {
+input,
+textarea,
+select {
   font-family: inherit;
 }
 
-@keyframes scroll-hint-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+.text-h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
-.scroll-hint-line {
-  animation: scroll-hint-pulse 2s ease-in-out infinite;
+.text-h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.35rem, 2.5vw, 1.65rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
-@keyframes queue-dot-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.4); }
+.page-enter {
+  animation: page-fade 150ms ease-out both;
 }
 
-.queue-dot-pulse {
-  animation: queue-dot-pulse 1.5s ease-in-out infinite;
+@keyframes page-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes accent-pulse-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.load-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: accent-pulse-dot 1s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .page-enter {
+    animation: none;
   }
 }
 
@@ -108,6 +170,12 @@ input, textarea, select {
   .line-clamp-2 {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-4 {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }

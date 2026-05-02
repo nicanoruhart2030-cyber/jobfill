@@ -1,8 +1,12 @@
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { ensureProfileForClerkUser } from "@/lib/profile/ensure";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { SwipeJob } from "@/lib/types";
+
+export const runtime = "nodejs";
 
 const jobSchema = z.object({
   job: z.object({
@@ -18,14 +22,22 @@ const jobSchema = z.object({
   }),
 });
 
-export async function POST(req: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+const APPLY_RATE_MAX = 20;
+const APPLY_RATE_WINDOW_MS = 60_000;
 
-  if (!user) {
+export async function POST(req: Request) {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
+
+  if (!checkRateLimit(`apply:${clerkId}`, APPLY_RATE_MAX, APPLY_RATE_WINDOW_MS)) {
+    return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
+  }
+
+  const internalUserId = await ensureProfileForClerkUser();
+  if (!internalUserId) {
+    return NextResponse.json({ error: "Profile not ready" }, { status: 500 });
   }
 
   let body: unknown;
@@ -49,7 +61,15 @@ export async function POST(req: Request) {
 
   const admin = getSupabaseAdmin();
 
-  const { data: existing } = await admin.from("jobs").select("id").eq("ats_url", j.apply_url).maybeSingle();
+  const { data: existing, error: existingErr } = await admin
+    .from("jobs")
+    .select("id")
+    .eq("ats_url", j.apply_url)
+    .maybeSingle();
+
+  if (existingErr) {
+    return NextResponse.json({ error: existingErr.message }, { status: 500 });
+  }
 
   let tid = existing?.id as string | undefined;
   if (!tid) {
@@ -78,7 +98,7 @@ export async function POST(req: Request) {
 
   const { error: appErr } = await admin.from("applications").upsert(
     {
-      user_id: user.id,
+      user_id: internalUserId,
       job_id: tid,
       status: "queued",
     },
@@ -100,6 +120,6 @@ async function maybeTriggerWorker() {
     const { processNextQueuedApplication } = await import("@/workers/applyWorker");
     void processNextQueuedApplication();
   } catch {
-    /* worker not bundle-safe in edge — ignore */
+    /* worker not bundle-safe in some runtimes */
   }
 }

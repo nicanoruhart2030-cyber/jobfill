@@ -1,0 +1,9 @@
+# Optional: Railway / Nixpacks — install Playwright browser after pip.
+# If the platform ignores this file, set build command to:
+#   pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "playwright install chromium",
+]

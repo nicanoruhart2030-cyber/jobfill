@@ -1,3 +1,5 @@
+"use client";
+
 export function Features() {
   const items = [
     {
@@ -21,29 +23,44 @@ export function Features() {
   ];
 
   return (
-    <section className="border-t-[0.5px] border-[var(--border)] bg-[var(--bg-base)] py-20 px-6">
-      <div className="mx-auto grid max-w-[1080px] gap-4 md:grid-cols-3">
-        {items.map((f) => (
-          <div
-            key={f.title}
-            className="rounded-[var(--radius-lg)] border-[0.5px] border-[var(--border)] bg-[var(--bg-surface)] p-6 transition-colors hover:border-[var(--border-hover)]"
-            style={{ boxShadow: "0 2px 8px color-mix(in oklch, var(--bg-base) 50%, transparent)" }}
-          >
-            <f.icon />
-            <h3
-              className="mt-4 text-[15px] text-[var(--text-1)]"
-              style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}
+    <section className="border-t border-[var(--border)] bg-[var(--bg-base)] px-6 py-20 md:px-16">
+      <div className="mx-auto max-w-[1100px] text-left">
+        <h2
+          className="text-[28px] text-[var(--text-1)]"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}
+        >
+          Why JobFill works.
+        </h2>
+        <p
+          className="mt-2 max-w-[480px] text-[15px] font-normal leading-relaxed text-[var(--text-2)]"
+          style={{ fontFamily: "var(--font-body)" }}
+        >
+          Built different from day one.
+        </p>
+        <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4">
+          {items.map((f) => (
+            <div
+              key={f.title}
+              className="group rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] p-6 text-left transition-[border-color,box-shadow] duration-200 hover:border-[var(--border-hover)] hover:shadow-[0_0_24px_rgba(0,229,160,0.05)]"
             >
-              {f.title}
-            </h3>
-            <p
-              className="mt-2 text-[13px] font-normal leading-[1.7] text-[var(--text-2)]"
-              style={{ fontFamily: "var(--font-body)" }}
-            >
-              {f.body}
-            </p>
-          </div>
-        ))}
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-dim)]">
+                <f.icon />
+              </div>
+              <h3
+                className="mt-4 text-left text-[15px] text-[var(--text-1)]"
+                style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}
+              >
+                {f.title}
+              </h3>
+              <p
+                className="mt-2 text-left text-[13px] font-normal leading-[1.8] text-[var(--text-2)]"
+                style={{ fontFamily: "var(--font-body)" }}
+              >
+                {f.body}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -51,7 +68,7 @@ export function Features() {
 
 function IconDoc() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--text-2)]" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--accent)]" aria-hidden>
       <path
         d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
         stroke="currentColor"
@@ -66,7 +83,7 @@ function IconDoc() {
 
 function IconSparkle() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--text-2)]" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--accent)]" aria-hidden>
       <path
         d="M12 2l1.2 4.2L17 8l-3.8 1.8L12 14l-1.2-4.2L7 8l3.8-1.8L12 2z"
         stroke="currentColor"
@@ -85,7 +102,7 @@ function IconSparkle() {
 
 function IconChart() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-[var(--text-2)]" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-[var(--accent)]" aria-hidden>
       <path d="M4 19V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <path d="M4 19h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <path d="M8 15v-4M12 15V9M16 15v-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

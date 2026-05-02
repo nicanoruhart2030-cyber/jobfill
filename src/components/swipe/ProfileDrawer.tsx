@@ -1,9 +1,10 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
-import { createClient } from "@/lib/supabase/client";
+import { useClerkSupabase } from "@/lib/supabase/clerk-browser";
 import type { Profile } from "@/lib/types";
 
 type ProfileDrawerProps = {
@@ -30,12 +31,13 @@ const empty: Partial<Profile> = {
   work_auth: "yes",
   salary_expectation: "",
   resume_url: null,
-  groq_api_key: "",
+  kimi_api_key: "",
   skills: [],
 };
 
 export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
-  const supabase = createClient();
+  const { user, isLoaded: userLoaded } = useUser();
+  const supabase = useClerkSupabase();
   const [userId, setUserId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Profile>>(empty);
   const [skillsInput, setSkillsInput] = useState("");
@@ -43,43 +45,61 @@ export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    void supabase.auth.getUser().then(({ data }) => {
-      const uid = data.user?.id ?? null;
-      setUserId(uid);
-      if (!uid) {
-        setStatus("Sign in to save your profile.");
-        return;
-      }
-      void supabase
+    if (!open || !userLoaded) return;
+    if (!supabase || !user) {
+      setUserId(null);
+      if (open) setStatus("Sign in to save your profile.");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setStatus(null);
+      let { data: row } = await supabase
         .from("profiles")
         .select("*")
-        .eq("user_id", uid)
-        .maybeSingle()
-        .then(({ data: row }) => {
-          if (row) {
-            const p = row as Profile;
-            setForm({
-              ...p,
-              skills: p.skills ?? [],
-            });
-            setSkillsInput((p.skills ?? []).join(", "));
-            if (p.resume_url) {
-              const seg = p.resume_url.split("/").pop();
-              setResumeName(seg ?? "resume.pdf");
-            }
-          } else {
-            setForm({ ...empty, email: data.user?.email ?? "" });
-            setSkillsInput("");
-            setResumeName(null);
-          }
+        .eq("clerk_user_id", user.id)
+        .maybeSingle();
+      if (!row) {
+        await fetch("/api/profile/ensure", { method: "POST" });
+        ({ data: row } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("clerk_user_id", user.id)
+          .maybeSingle());
+      }
+      if (cancelled) return;
+      const internalId = (row as Profile | null)?.user_id ?? null;
+      setUserId(internalId);
+      if (!internalId) {
+        setStatus("Could not load profile.");
+        return;
+      }
+      if (row) {
+        const p = row as Profile & { groq_api_key?: string | null };
+        setForm({
+          ...p,
+          skills: p.skills ?? [],
+          kimi_api_key: p.kimi_api_key ?? p.groq_api_key ?? "",
         });
-    });
-  }, [open, supabase]);
+        setSkillsInput((p.skills ?? []).join(", "));
+        if (p.resume_url) {
+          const seg = p.resume_url.split("/").pop();
+          setResumeName(seg ?? "resume.pdf");
+        }
+      } else {
+        setForm({ ...empty, email: user.primaryEmailAddress?.emailAddress ?? "" });
+        setSkillsInput("");
+        setResumeName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, supabase, user, userLoaded]);
 
   const persist = useCallback(
     async (patch: Record<string, unknown>) => {
-      if (!userId) return;
+      if (!userId || !supabase || !user) return;
       const normalized = { ...patch };
       if (typeof normalized.grad_year === "string") {
         const raw = String(normalized.grad_year).trim();
@@ -89,13 +109,14 @@ export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
           normalized.grad_year = Number.isFinite(n) ? n : null;
         }
       }
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const email =
+        (typeof normalized.email === "string" ? normalized.email : user.primaryEmailAddress?.emailAddress) ||
+        "";
       const { error } = await supabase.from("profiles").upsert(
         {
           user_id: userId,
-          email: (typeof normalized.email === "string" ? normalized.email : user?.email) || "",
+          clerk_user_id: user.id,
+          email,
           ...normalized,
         },
         { onConflict: "user_id" },
@@ -103,7 +124,7 @@ export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
       if (error) setStatus(error.message);
       else setStatus(null);
     },
-    [userId, supabase],
+    [userId, supabase, user],
   );
 
   const onBlurField = (key: string, value: unknown) => {
@@ -114,7 +135,7 @@ export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
   const onDrop = useCallback(
     async (files: File[]) => {
       const f = files[0];
-      if (!f || !userId) return;
+      if (!f || !userId || !supabase) return;
       const path = `${userId}/${f.name}`;
       const { error: upErr } = await supabase.storage.from("resumes").upload(path, f, { upsert: true });
       if (upErr) {
@@ -271,7 +292,15 @@ export function ProfileDrawer({ open, onClose }: ProfileDrawerProps) {
                 <option value="student">Student / Co-op</option>
               </select>
               <Input label="Salary expectation" value={String(form.salary_expectation ?? "")} onChange={field("salary_expectation")} onBlur={blurInput("salary_expectation")} />
-              <Input label="Groq API key (optional)" value={String(form.groq_api_key ?? "")} onChange={field("groq_api_key")} onBlur={blurInput("groq_api_key")} obscure />
+              <Input
+                label="Kimi API key (optional)"
+                placeholder="sk-..."
+                hint="Free at platform.moonshot.ai — used for cover letters"
+                value={String(form.kimi_api_key ?? "")}
+                onChange={field("kimi_api_key")}
+                onBlur={blurInput("kimi_api_key")}
+                obscure
+              />
             </div>
             <div className="border-t-[0.5px] border-[var(--border)] p-4">
               <button
@@ -304,12 +333,16 @@ function Input({
   onChange,
   onBlur,
   obscure,
+  placeholder,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur: (e: React.FocusEvent<HTMLInputElement>) => void;
   obscure?: boolean;
+  placeholder?: string;
+  hint?: string;
 }) {
   return (
     <>
@@ -321,10 +354,16 @@ function Input({
         value={value}
         onChange={onChange}
         onBlur={onBlur}
-        className="mt-1 w-full rounded-[var(--radius-sm)] border-[0.5px] border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[14px] text-[var(--text-1)] focus:border-[var(--border-accent)] focus:outline-none"
+        placeholder={placeholder}
+        className="mt-1 w-full rounded-[var(--radius-sm)] border-[0.5px] border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[14px] text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:border-[var(--border-accent)] focus:outline-none"
         style={{ fontFamily: "var(--font-body)" }}
         autoComplete="off"
       />
+      {hint ? (
+        <p className="mt-1 text-[11px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-body)" }}>
+          {hint}
+        </p>
+      ) : null}
     </>
   );
 }

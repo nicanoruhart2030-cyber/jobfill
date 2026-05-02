@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ApplicationCard } from "@/components/results/ApplicationCard";
-import { ParticleBurst } from "@/components/results/ParticleBurst";
+import { Balloons, type BalloonsHandle } from "@/components/ui/balloons";
 import { useToast } from "@/components/ui/Toast";
 import type { ApplicationRow, ResultsFilter } from "@/lib/types";
 
@@ -54,7 +54,7 @@ export function ResultsGrid({ applications }: ResultsGridProps) {
   const { toast } = useToast();
   const [filter, setFilter] = useState<ResultsFilter>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [burst, setBurst] = useState(false);
+  const balloonsRef = useRef<BalloonsHandle | null>(null);
   const burstLock = useRef(false);
 
   const filtered = useMemo(() => filterRows(applications, filter), [applications, filter]);
@@ -78,8 +78,8 @@ export function ResultsGrid({ applications }: ResultsGridProps) {
     (company: string) => {
       if (burstLock.current) return;
       burstLock.current = true;
-      setBurst(true);
-      toast(`Application accepted at ${company}`, "success");
+      balloonsRef.current?.launchAnimation();
+      toast(`Accepted at ${company}`, "success");
       window.setTimeout(() => {
         burstLock.current = false;
       }, 4500);
@@ -118,7 +118,7 @@ export function ResultsGrid({ applications }: ResultsGridProps) {
 
   return (
     <>
-      <ParticleBurst active={burst} onDone={() => setBurst(false)} />
+      <Balloons ref={balloonsRef} />
 
       <header className="px-4 pb-6 pt-10 md:px-8">
         <h1 className="text-[32px] text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}>

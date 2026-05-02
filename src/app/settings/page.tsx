@@ -1,5 +1,6 @@
 'use client';
 
+import { useClerk, useUser } from '@clerk/nextjs';
 import {
   ChangeEvent,
   FormEvent,
@@ -9,7 +10,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useClerkSupabase } from '@/lib/supabase/clerk-browser';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -60,12 +61,16 @@ const EMPTY_PROFILE: ProfileForm = {
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { signOut } = useClerk();
+  const { user, isLoaded: userLoaded } = useUser();
+  const supabase = useClerkSupabase();
 
   const [section, setSection]   = useState<SectionId>('profile');
   const [loaded, setLoaded]     = useState(false);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
 
   const [profile, setProfile]   = useState<ProfileForm>(EMPTY_PROFILE);
-  const [groqKey, setGroqKey]   = useState('');
+  const [kimiKey, setKimiKey]   = useState('');
   const [showKey, setShowKey]   = useState(false);
   const [plan, setPlan]         = useState<'free' | 'pro'>('free');
 
@@ -85,26 +90,49 @@ export default function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+    if (!userLoaded) return;
+    if (!user) {
+      router.replace('/sign-in');
+      return;
+    }
 
-      const { data } = await supabase
+    void (async () => {
+      const sb = supabase;
+      if (!sb) return;
+
+      let { data } = await sb
         .from('profiles')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('clerk_user_id', user.id)
         .maybeSingle();
 
+      if (!data) {
+        await fetch('/api/profile/ensure', { method: 'POST' });
+        ({ data } = await sb
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', user.id)
+          .maybeSingle());
+      }
+
+      if (data?.user_id) setProfileUserId(data.user_id);
+
       if (data) {
+        const row = data as { kimi_api_key?: string | null; groq_api_key?: string | null };
+        const email =
+          data.email ??
+          user.primaryEmailAddress?.emailAddress ??
+          user.emailAddresses[0]?.emailAddress ??
+          '';
         setProfile({
           ...EMPTY_PROFILE,
           ...data,
-          email: data.email ?? user.email ?? '',
+          email,
           country: data.country ?? 'Canada',
           grad_year: data.grad_year?.toString() ?? '',
         });
-        if (data.groq_api_key) setGroqKey(data.groq_api_key);
+        if (row.kimi_api_key) setKimiKey(row.kimi_api_key);
+        else if (row.groq_api_key) setKimiKey(row.groq_api_key);
         if (data.plan === 'pro') setPlan('pro');
         if (data.resume_url) {
           const fileName = data.resume_url.split('/').pop() ?? 'resume.pdf';
@@ -116,9 +144,8 @@ export default function SettingsPage() {
         }
       }
       setLoaded(true);
-    }
-    void load();
-  }, [router]);
+    })();
+  }, [router, supabase, user, userLoaded]);
 
   /* ── Updaters ── */
   function update<K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) {
@@ -128,15 +155,30 @@ export default function SettingsPage() {
   /* ── Save profile ── */
   async function saveProfile(e: FormEvent) {
     e.preventDefault();
-    const supabase = createClient();
+    if (!supabase || !user) {
+      router.replace('/sign-in');
+      return;
+    }
+    let internalId = profileUserId;
+    if (!internalId) {
+      await fetch('/api/profile/ensure', { method: 'POST' });
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      internalId = row?.user_id ?? null;
+    }
+    if (!internalId) {
+      toast('Profile not ready', 'error');
+      return;
+    }
     setSavingProfile(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSavingProfile(false); router.push('/login'); return; }
 
     const { error } = await supabase.from('profiles').update({
       ...profile,
       grad_year: profile.grad_year ? Number(profile.grad_year) : null,
-    }).eq('user_id', user.id);
+    }).eq('user_id', internalId);
 
     setSavingProfile(false);
     if (error) toast(error.message, 'error');
@@ -146,13 +188,24 @@ export default function SettingsPage() {
   /* ── Save resume ── */
   async function saveResume(e: FormEvent) {
     e.preventDefault();
-    if (!resumeFile) return;
-    const supabase = createClient();
+    if (!resumeFile || !supabase || !user) return;
+    let internalId = profileUserId;
+    if (!internalId) {
+      await fetch('/api/profile/ensure', { method: 'POST' });
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      internalId = row?.user_id ?? null;
+    }
+    if (!internalId) {
+      toast('Profile not ready', 'error');
+      return;
+    }
     setSavingResume(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSavingResume(false); router.push('/login'); return; }
 
-    const path = `${user.id}/${Date.now()}-${resumeFile.name}`;
+    const path = `${internalId}/${Date.now()}-${resumeFile.name}`;
     const { error: uploadErr } = await supabase.storage
       .from('resumes')
       .upload(path, resumeFile, { contentType: 'application/pdf', upsert: true });
@@ -163,7 +216,7 @@ export default function SettingsPage() {
     }
     const { error: profileErr } = await supabase.from('profiles')
       .update({ resume_url: path })
-      .eq('user_id', user.id);
+      .eq('user_id', internalId);
 
     setSavingResume(false);
     if (profileErr) {
@@ -177,16 +230,31 @@ export default function SettingsPage() {
     toast('Resume replaced', 'success');
   }
 
-  /* ── Save Groq key ── */
+  /* ── Save Kimi key ── */
   async function saveKey(e: FormEvent) {
     e.preventDefault();
-    const supabase = createClient();
+    if (!supabase || !user) {
+      router.replace('/sign-in');
+      return;
+    }
+    let internalId = profileUserId;
+    if (!internalId) {
+      await fetch('/api/profile/ensure', { method: 'POST' });
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      internalId = row?.user_id ?? null;
+    }
+    if (!internalId) {
+      toast('Profile not ready', 'error');
+      return;
+    }
     setSavingKey(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSavingKey(false); router.push('/login'); return; }
     const { error } = await supabase.from('profiles')
-      .update({ groq_api_key: groqKey || null })
-      .eq('user_id', user.id);
+      .update({ kimi_api_key: kimiKey || null })
+      .eq('user_id', internalId);
     setSavingKey(false);
     if (error) toast(error.message, 'error');
     else toast('API key saved', 'success');
@@ -211,13 +279,23 @@ export default function SettingsPage() {
   /* ── Delete account ── */
   async function deleteAccount() {
     if (deleteConfirm !== 'DELETE') return;
+    if (!supabase || !user) return;
     setDeleting(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setDeleting(false); router.push('/login'); return; }
-    /* Soft delete: clear profile, sign out. Hard deletion is admin-only. */
-    await supabase.from('profiles').delete().eq('user_id', user.id);
-    await supabase.auth.signOut();
+    let internalId = profileUserId;
+    if (!internalId) {
+      const { data: row } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      internalId = row?.user_id ?? null;
+    }
+    if (!internalId) {
+      setDeleting(false);
+      return;
+    }
+    await supabase.from('profiles').delete().eq('user_id', internalId);
+    await signOut();
     setDeleting(false);
     router.push('/');
   }
@@ -512,14 +590,14 @@ export default function SettingsPage() {
               <Panel title="API Keys" subtitle="Used for AI cover letter generation. Never stored in plain text.">
                 <form onSubmit={saveKey} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <Input
-                    label="Groq API key"
+                    label="Kimi API key"
                     type={showKey ? 'text' : 'password'}
-                    value={groqKey}
-                    onChange={(e) => setGroqKey(e.target.value)}
-                    placeholder="gsk_…"
+                    value={kimiKey}
+                    onChange={(e) => setKimiKey(e.target.value)}
+                    placeholder="sk-..."
                     autoComplete="off"
                     spellCheck={false}
-                    hint="Get a free key at console.groq.com"
+                    hint="Free at platform.moonshot.ai — used for cover letters"
                   />
                   <button
                     type="button"

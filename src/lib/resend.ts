@@ -14,12 +14,11 @@ export async function sendWaitlistConfirmation(to: string): Promise<{ ok: boolea
   const { error } = await r.emails.send({
     from,
     to,
-    subject: "You're on the list.",
+    subject: "Welcome to JobFill",
     text:
       "Hey,\n\n" +
-      "You're on the JobFill waitlist.\n\n" +
-      "We'll email you the moment early access opens.\n" +
-      "No spam. Just one email when it's ready.\n\n" +
+      "Thanks for creating a JobFill account.\n\n" +
+      "Sign in anytime to open your swipe deck, manage applications, and upgrade when you need more volume.\n\n" +
       "— The JobFill team",
   });
 

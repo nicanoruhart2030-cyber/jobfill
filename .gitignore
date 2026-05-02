@@ -38,3 +38,6 @@ next-env.d.ts
 # supabase local
 supabase/.temp/
 
+**/__pycache__/
+*.py[cod]
+

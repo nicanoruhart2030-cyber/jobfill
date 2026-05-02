@@ -81,7 +81,7 @@ export function Nav() {
             </a>
           ))}
           <Link
-            href="/login"
+            href="/sign-in"
             style={{
               fontFamily: 'Inter',
               fontSize: 13,
@@ -94,7 +94,7 @@ export function Nav() {
             Sign in
           </Link>
           <Link
-            href="/signup"
+            href="/sign-up"
             className="btn btn-primary"
             style={{ padding: '8px 16px', fontSize: 13 }}
           >
@@ -211,7 +211,7 @@ export function Nav() {
               </a>
             ))}
             <Link
-              href="/login"
+              href="/sign-in"
               onClick={() => setOpen(false)}
               style={{
                 fontFamily: 'Syne',
@@ -225,7 +225,7 @@ export function Nav() {
               Sign in
             </Link>
             <Link
-              href="/signup"
+              href="/sign-up"
               onClick={() => setOpen(false)}
               className="btn btn-primary"
               style={{ marginTop: 24, width: '100%', height: 48, fontSize: 14 }}

@@ -1,14 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SwipeScene, type SwipeSceneHandle } from '@/components/swipe/SwipeScene';
-import { JobPanel } from '@/components/swipe/JobPanel';
-import { SwipeActionBar } from '@/components/swipe/SwipeActionBar';
+import { useUser } from '@clerk/nextjs';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SwipeDeck } from '@/components/swipe/SwipeDeck';
+import { AutofillOverlay } from '@/components/swipe/AutofillOverlay';
 import { ProfileDrawer } from '@/components/swipe/ProfileDrawer';
 import { seedSwipeJobs } from '@/lib/seedJobs';
 import { useToast } from '@/components/ui/Toast';
-import type { SwipeJob } from '@/lib/types';
+import { useClerkSupabase } from '@/lib/supabase/clerk-browser';
+import type { JobCardData, SwipeJob } from '@/lib/types';
+
+const DAILY_GOAL = 25;
+
+function reviewedKey() {
+  return `jobfill-reviewed-${new Date().toDateString()}`;
+}
 
 function ProfileIcon() {
   return (
@@ -25,12 +32,35 @@ function ProfileIcon() {
 }
 
 export default function SwipePage() {
+  const { user, isLoaded: userLoaded } = useUser();
+  const supabase = useClerkSupabase();
   const { toast } = useToast();
   const [jobs, setJobs] = useState<SwipeJob[]>([]);
-  const [stackIndex, setStackIndex] = useState(0);
   const [queueCount, setQueueCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const sceneRef = useRef<SwipeSceneHandle>(null);
+  const [profileSkills, setProfileSkills] = useState<string[]>([]);
+  const [reviewedToday, setReviewedToday] = useState(0);
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    try {
+      const n = parseInt(localStorage.getItem(reviewedKey()) ?? '0', 10);
+      setReviewedToday(Number.isFinite(n) ? n : 0);
+    } catch {
+      setReviewedToday(0);
+    }
+  }, []);
+
+  const bumpReviewed = useCallback(() => {
+    try {
+      const key = reviewedKey();
+      const n = parseInt(localStorage.getItem(key) ?? '0', 10) + 1;
+      localStorage.setItem(key, String(n));
+      setReviewedToday(n);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     void fetch('/api/jobs')
@@ -42,77 +72,116 @@ export default function SwipePage() {
       .catch(() => setJobs(seedSwipeJobs()));
   }, []);
 
-  const remaining = Math.max(0, jobs.length - stackIndex);
-  const current = jobs[stackIndex] ?? null;
-  const currentRef = useRef(current);
-  currentRef.current = current;
-
-  const advanceSkip = useCallback(() => {
-    setStackIndex((i) => Math.min(i + 1, jobs.length));
-  }, [jobs.length]);
-
-  const onSwipeRight = useCallback(async () => {
-    const job = currentRef.current;
-    if (!job) return;
-    setStackIndex((i) => Math.min(i + 1, jobs.length));
-    try {
-      const res = await fetch('/api/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          job: {
-            id: job.id,
-            title: job.title,
-            company: job.company,
-            location: job.location,
-            salary_display: job.salary_display,
-            job_type: job.job_type,
-            description: job.description,
-            tags: job.tags,
-            apply_url: job.apply_url,
-          },
-        }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        if (res.status === 401) {
-          toast('Sign in to queue applications.', 'error');
-          return;
-        }
-        throw new Error(json.error ?? 'Queue failed');
+  useEffect(() => {
+    if (!userLoaded || !supabase || !user) return;
+    let cancelled = false;
+    void (async () => {
+      let { data } = await supabase
+        .from('profiles')
+        .select('skills')
+        .eq('clerk_user_id', user.id)
+        .maybeSingle();
+      if (!data) {
+        await fetch('/api/profile/ensure', { method: 'POST' });
+        ({ data } = await supabase
+          .from('profiles')
+          .select('skills')
+          .eq('clerk_user_id', user.id)
+          .maybeSingle());
       }
-      setQueueCount((n) => n + 1);
-      toast(`Queued ${job.title} at ${job.company}`, 'success');
-    } catch (e) {
-      toast(e instanceof Error ? e.message : 'Could not queue job', 'error');
-    }
-  }, [jobs.length, toast]);
+      if (cancelled) return;
+      if (data?.skills && Array.isArray(data.skills)) setProfileSkills(data.skills as string[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userLoaded, supabase, user]);
 
-  const deckJobs = useMemo(() => jobs, [jobs]);
+  const deckJobs = useMemo(() => jobs as JobCardData[], [jobs]);
+
+  const onSwipeApply = useCallback(
+    async (job: JobCardData) => {
+      setApplying(true);
+      bumpReviewed();
+      try {
+        const res = await fetch('/api/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job: {
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              salary_display: job.salary_display,
+              job_type: job.job_type,
+              description: job.description,
+              tags: job.tags,
+              apply_url: job.apply_url,
+            },
+          }),
+        });
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          if (res.status === 401) {
+            toast('Sign in to queue applications.', 'error');
+            return;
+          }
+          throw new Error(json.error ?? 'Queue failed');
+        }
+        setQueueCount((n) => n + 1);
+        toast(`Queued ${job.title} at ${job.company}`, 'success');
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not queue job', 'error');
+      } finally {
+        setApplying(false);
+      }
+    },
+    [bumpReviewed, toast],
+  );
+
+  const onSwipeSkip = useCallback(() => {
+    bumpReviewed();
+  }, [bumpReviewed]);
+
+  const onSaveLater = useCallback(
+    (job: JobCardData) => {
+      try {
+        const raw = localStorage.getItem('jobfill-saved-jobs');
+        const arr: string[] = raw ? JSON.parse(raw) : [];
+        if (!arr.includes(job.id)) arr.push(job.id);
+        localStorage.setItem('jobfill-saved-jobs', JSON.stringify(arr));
+      } catch {
+        /* ignore */
+      }
+      toast('Saved for later', 'success');
+      bumpReviewed();
+    },
+    [bumpReviewed, toast],
+  );
+
+  const progressPct = Math.min(100, (reviewedToday / DAILY_GOAL) * 100);
 
   return (
-    <main
-      className="flex flex-col overflow-hidden bg-[var(--bg-base)]"
-      style={{ height: '100dvh', maxHeight: '100dvh' }}
-    >
-      <header
-        className="flex h-14 shrink-0 items-center justify-between border-b-[0.5px] border-[var(--border)] px-6"
-      >
-        <Link
-          href="/"
-          className="text-[16px] font-medium text-[var(--text-1)]"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
+    <main className="flex min-h-0 flex-col overflow-hidden bg-[var(--bg)]" style={{ height: '100dvh', maxHeight: '100dvh' }}>
+      <div className="h-1 w-full shrink-0 bg-[var(--surface-2)]">
+        <div className="h-full bg-[var(--accent)] transition-[width] duration-300 ease-out" style={{ width: `${progressPct}%` }} />
+      </div>
+
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border)] px-4 sm:px-6">
+        <Link href="/" className="text-[15px] font-extrabold tracking-tight text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-display)' }}>
           JobFill
         </Link>
         <div className="flex items-center gap-4">
-          <p className="text-[13px] text-[var(--text-2)]" style={{ fontFamily: 'var(--font-mono)' }}>
-            <span className="text-[var(--text-1)]">{remaining}</span> left
+          <p className="text-[12px] text-[var(--text-secondary)]" style={{ fontFamily: 'var(--font-mono)' }}>
+            <span className="text-[var(--text-primary)]">{reviewedToday}</span>
+            <span className="text-[var(--text-3)]"> / {DAILY_GOAL} </span>
+            today
           </p>
           <button
             type="button"
             aria-label="Open profile"
-            className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-sm)] border-[0.5px] border-[var(--border)] text-[var(--text-2)] transition-colors hover:border-[var(--border-hover)] hover:bg-[var(--bg-elevated)]"
+            className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] transition-[border-color,opacity] hover:border-[var(--border-hover)] hover:opacity-90"
             onClick={() => setDrawerOpen(true)}
           >
             <ProfileIcon />
@@ -120,28 +189,18 @@ export default function SwipePage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col justify-center gap-4 pb-6 pt-4">
-        <SwipeScene
-          ref={sceneRef}
+      <div className="mx-auto flex min-h-0 w-full max-w-[440px] flex-1 flex-col justify-center py-4">
+        <SwipeDeck
           jobs={deckJobs}
-          stackIndex={stackIndex}
-          onSwipeLeft={advanceSkip}
-          onSwipeRight={onSwipeRight}
+          profileSkills={profileSkills}
+          onSwipeApply={onSwipeApply}
+          onSwipeSkip={onSwipeSkip}
+          onSaveLater={onSaveLater}
         />
-        <JobPanel job={current} />
-        <SwipeActionBar
-          disabled={!current}
-          onSkip={() => sceneRef.current?.flingLeft()}
-          onApply={() => sceneRef.current?.flingRight()}
-        />
-        <div
-          className="mx-auto flex items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--bg-surface)] px-6 py-2.5"
-        >
-          {queueCount > 0 ? (
-            <span className="queue-dot-pulse inline-block h-2 w-2 rounded-[var(--radius-pill)] bg-[var(--accent)]" aria-hidden />
-          ) : null}
-          <span className="text-[13px] text-[var(--text-2)]" style={{ fontFamily: 'var(--font-body)' }}>
-            <span className="text-[var(--text-accent)]" style={{ fontFamily: 'var(--font-mono)' }}>
+        <div className="mx-auto mt-4 flex items-center justify-center gap-2">
+          {queueCount > 0 ? <span className="load-dot" aria-hidden /> : null}
+          <span className="text-[13px] text-[var(--text-secondary)]" style={{ fontFamily: 'var(--font-body)' }}>
+            <span className="text-[var(--accent)]" style={{ fontFamily: 'var(--font-mono)' }}>
               {queueCount}
             </span>{' '}
             queued
@@ -149,6 +208,7 @@ export default function SwipePage() {
         </div>
       </div>
 
+      <AutofillOverlay open={applying} />
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </main>
   );

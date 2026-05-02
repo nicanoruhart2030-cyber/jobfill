@@ -46,7 +46,7 @@ export function JobPanel({ job }: JobPanelProps) {
             {job.salary_display}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {job.tags.slice(0, 8).map((t) => (
+            {(Array.isArray(job.tags) ? job.tags : []).slice(0, 8).map((t) => (
               <span
                 key={t}
                 className="rounded-[var(--radius-sm)] border-[0.5px] border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-2)]"
